@@ -11,6 +11,7 @@ export default component$(() => {
           <h1 class="text-4xl font-bold text-center mb-4">FUSCH</h1>
           <Countdown />
           <ThemeToggle />
+          test
         </div>
       </div>
     </>
