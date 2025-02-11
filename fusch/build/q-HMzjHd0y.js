@@ -1,1 +1,0 @@
-import{_ as t}from"./q-S624Mmkg.js";import{c as e,q as o}from"./q-f5WWJhl-.js";const s=e(o(()=>t(()=>import("./q-BFMYtsVp.js"),[]),"s_B0lqk5IDDy4")),i={title:"Fusch",meta:[{name:"description",content:"Fusch Homepage"}]};export{s as default,i as head};
