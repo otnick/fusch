@@ -35,5 +35,4 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.FUSCH_TOKEN }}
-          publish_dir: ./dist
-
+          publish_dir: ./gh-pages  # Veröffentliche das Root-Verzeichnis, wo die Dateien verschoben wurden
