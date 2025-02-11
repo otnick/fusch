@@ -13,7 +13,6 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -29,8 +28,12 @@ jobs:
       - name: Build Project
         run: npm run build
 
+      - name: Move Build Files to Root
+        run: mv ./dist/* ./gh-pages/  # Verschiebe alle Dateien ins Root-Verzeichnis
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.FUSCH_TOKEN }}
-          publish_dir: ./dist
+          publish_dir: ./  # Verzeichnis für die Dateien im Root
+
