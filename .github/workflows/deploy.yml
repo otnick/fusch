@@ -35,5 +35,5 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.FUSCH_TOKEN }}
-          publish_dir: ./  # Verzeichnis für die Dateien im Root
+          publish_dir: ./dist
 
