@@ -1,4 +1,5 @@
 import { component$ } from "@builder.io/qwik";
+import { Canvas } from "~/components/Canvas";
 import type { DocumentHead } from "@builder.io/qwik-city";
 import Countdown from "~/components/Countdown";
 import ThemeToggle from "~/components/ThemeToggle";
@@ -6,13 +7,16 @@ import ThemeToggle from "~/components/ThemeToggle";
 export default component$(() => {
   return (
     <>
-      <div class="flex h-screen items-center justify-center">
+      <div class="absolute inset-0 z-0" >
+        <Canvas />
+      </div>
+      <div class="flex h-screen items-center justify-center relative z-10" style="pointer-events: none;">
         <div>
-          <h1 class="text-4xl font-bold text-center mb-4">FUSCH</h1>
+          <h1 class="text-4xl font-bold text-center mb-4" style="color: red;">FUSCH</h1>
           <Countdown />
-          <ThemeToggle />
         </div>
       </div>
+      <ThemeToggle />
     </>
   );
 });
