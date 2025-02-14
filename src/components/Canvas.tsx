@@ -79,7 +79,7 @@ export const Canvas = component$(() => {
     <div>
       <input
         type="color"
-        class="fixed top-6 right-44 z-50 rounded-md"
+        class="fixed bottom-6 right-4 z-50 rounded-md"
         value={color.value}
         onInput$={(e) => (color.value = (e.target as HTMLInputElement).value)}
       />
@@ -88,7 +88,7 @@ export const Canvas = component$(() => {
         min="1"
         max="20"
         value={lineWidth.value}
-        class="fixed top-7 right-64 z-50"
+        class="fixed bottom-7 right-24 z-50"
         onInput$={(e) => (lineWidth.value = parseInt((e.target as HTMLInputElement).value))}
       />
       <canvas

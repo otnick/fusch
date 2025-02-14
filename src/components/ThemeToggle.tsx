@@ -2,7 +2,7 @@ import { $, component$, useSignal, useVisibleTask$ } from "@builder.io/qwik";
 import confetti from "canvas-confetti";
 
 export default component$(() => {
-  const isDark = useSignal(false);
+  const isDark = useSignal(true);
   const confettiInterval = useSignal<number | undefined>(undefined);
 
   // Helper-Funktion für zufällige Zahl in einem Bereich
@@ -63,7 +63,7 @@ export default component$(() => {
 
   // 🔀 Toggle zwischen Party und Beach Mode
   const toggleTheme = $(() => {
-    isDark.value = !isDark.value;
+    // isDark.value = !isDark.value;
     document.documentElement.classList.toggle("dark", isDark.value);
     localStorage.setItem("theme", isDark.value ? "dark" : "light");
 
@@ -80,7 +80,7 @@ export default component$(() => {
       class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg hover:scale-105 transition-transform fixed top-4 right-4"
       onClick$={toggleTheme}
     >
-      {isDark.value ? "🎉 Party Mode" : "☀️ Beach Mode"}
+      {"🎉 Party Mode"}
     </button>
   );
 });
