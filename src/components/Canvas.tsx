@@ -3,6 +3,7 @@ import io from "socket.io-client";
 
 export const Canvas = component$(() => {
   const color = useSignal("#000000");
+  const lineWidth = useSignal(3);
 
   // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(() => {
@@ -12,14 +13,20 @@ export const Canvas = component$(() => {
 
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    canvas.style.touchAction = "none";
 
     let drawing = false;
+    let lastX = 0;
+    let lastY = 0;
 
     // Laden des gespeicherten Canvas-Zustands
     socket.emit("requestCanvasState");
 
     canvas.addEventListener("pointerdown", (e) => {
       drawing = true;
+      const rect = canvas.getBoundingClientRect();
+      lastX = e.clientX - rect.left;
+      lastY = e.clientY - rect.top;
       drawAndEmit(e);
     });
 
@@ -33,11 +40,13 @@ export const Canvas = component$(() => {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      socket.emit("draw", { x, y, color: color.value });
-      drawLine(x, y, color.value);
+      socket.emit("draw", { x, y, color: color.value, lastX, lastY, lineWidth: lineWidth.value });
+      drawLine(lastX, lastY, x, y, color.value, lineWidth.value);
+      lastX = x;
+      lastY = y;
     }
 
-    socket.on("draw", ({ x, y, color }) => drawLine(x, y, color));
+    socket.on("draw", ({ x, y, lastX, lastY, color, lineWidth }) => drawLine(lastX, lastY, x, y, color, lineWidth));
 
     socket.on("canvasState", (state) => {
       const img = new Image();
@@ -47,12 +56,15 @@ export const Canvas = component$(() => {
       };
     });
 
-    function drawLine(x: number, y: number, color: string) {
+    function drawLine(x1: number, y1: number, x2: number, y2: number, color: string, lineWidth: number) {
       if (ctx) {
-        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
       }
     }
 
@@ -70,6 +82,14 @@ export const Canvas = component$(() => {
         class="fixed top-6 right-44 z-50 rounded-md"
         value={color.value}
         onInput$={(e) => (color.value = (e.target as HTMLInputElement).value)}
+      />
+      <input
+        type="range"
+        min="1"
+        max="20"
+        value={lineWidth.value}
+        class="fixed top-7 right-64 z-50"
+        onInput$={(e) => (lineWidth.value = parseInt((e.target as HTMLInputElement).value))}
       />
       <canvas
         id="drawingCanvas"
