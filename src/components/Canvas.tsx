@@ -72,7 +72,7 @@ export const Canvas = component$(() => {
     setInterval(() => {
       const state = canvas.toDataURL();
       socket.emit("saveCanvasState", state);
-    }, 5000);
+    }, 1000);
   });
 
   return (
