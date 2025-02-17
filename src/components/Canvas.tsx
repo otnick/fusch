@@ -6,8 +6,11 @@ export const Canvas = component$(() => {
   const lineWidth = useSignal(3);
 
   // eslint-disable-next-line qwik/no-use-visible-task
+  // https://fusch-backend.onrender.com
+  // 192.168.1.44:3000
+  // https://socket.fusch.fun/
   useVisibleTask$(() => {
-    const socket = io("https://fusch-backend.onrender.com");
+    const socket = io("https://socket.fusch.fun/");
     const canvas = document.getElementById("drawingCanvas") as HTMLCanvasElement;
     const ctx = canvas.getContext("2d");
 
