@@ -23,46 +23,51 @@ export const Canvas = component$(() => {
     let lastX = 0;
     let lastY = 0;
 
-    canvas.addEventListener("pointerdown", (e) => {
-      drawing = true;
+    // pointer events
+    const startDrawing = (e: PointerEvent | TouchEvent, start: boolean) => {
+      drawing = start;
       const rect = canvas.getBoundingClientRect();
-      lastX = e.clientX - rect.left;
-      lastY = e.clientY - rect.top;
-    });
+      if ('touches' in e) {
+        // For touch events, use the first touch point
+        lastX = e.touches[0].clientX - rect.left;
+        lastY = e.touches[0].clientY - rect.top;
+      } else {
+        // For pointer events
+        lastX = e.clientX - rect.left;
+        lastY = e.clientY - rect.top;
+      }
+    };
 
-    canvas.addEventListener("pointerup", () => (drawing = false));
-
-    canvas.addEventListener("pointermove", (e) => {
+    const draw = (e: PointerEvent | TouchEvent) => {
       if (!drawing) return;
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      let x, y;
+      if ('touches' in e) {
+        x = e.touches[0].clientX - rect.left;
+        y = e.touches[0].clientY - rect.top;
+      } else {
+        x = e.clientX - rect.left;
+        y = e.clientY - rect.top;
+      }
       socket.emit("draw", { x, y, lastX, lastY, color: color.value, lineWidth: lineWidth.value });
       drawLine(lastX, lastY, x, y, color.value, lineWidth.value);
       lastX = x;
       lastY = y;
-    });
+    };
 
-    // touch events
-    canvas.addEventListener("touchstart", (e) => {
-      drawing = true;
-      const rect = canvas.getBoundingClientRect();
-      lastX = e.touches[0].clientX - rect.left;
-      lastY = e.touches[0].clientY - rect.top;
-    });
+    const stopDrawing = () => {
+      drawing = false;
+    };
 
-    canvas.addEventListener("touchend", () => (drawing = false));
+    // Pointer events for drawing
+    canvas.addEventListener("pointerdown", (e) => startDrawing(e, true));
+    canvas.addEventListener("pointerup", stopDrawing);
+    canvas.addEventListener("pointermove", (e) => draw(e));
 
-    canvas.addEventListener("touchmove", (e) => {
-      if (!drawing) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.touches[0].clientX - rect.left;
-      const y = e.touches[0].clientY - rect.top;
-      socket.emit("draw", { x, y, lastX, lastY, color: color.value, lineWidth: lineWidth.value });
-      drawLine(lastX, lastY, x, y, color.value, lineWidth.value);
-      lastX = x;
-      lastY = y;
-    });
+    // Touch events for mobile support
+    canvas.addEventListener("touchstart", (e) => startDrawing(e, true));
+    canvas.addEventListener("touchend", stopDrawing);
+    canvas.addEventListener("touchmove", (e) => draw(e));
 
     socket.on("draw", ({ x, y, lastX, lastY, color, lineWidth }) => drawLine(lastX, lastY, x, y, color, lineWidth));
     socket.on("canvasState", (commands: { x: number, y: number, lastX: number, lastY: number, color: string, lineWidth: number }[]) => {
