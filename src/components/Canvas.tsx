@@ -96,18 +96,20 @@ export const Canvas = component$(() => {
       canvas.style.transform = `translate(${offsetX.value}px, ${offsetY.value}px) scale(${zoomLevel.value})`;
       if ('touches' in e) {
         startMoveX = e.touches[0].clientX - rect.left;
-      } else {
-        startMoveX = e.clientX - rect.left;
-      }
-      if ('touches' in e) {
         startMoveY = e.touches[0].clientY - rect.top;
       } else {
+        startMoveX = e.clientX - rect.left;
         startMoveY = e.clientY - rect.top;
       }
     };
 
     const stopMove = () => {
       isMoving.value = false;
+    };
+
+    // Verhindern des Scrollens bei Touch-Events
+    const preventScroll = (e: TouchEvent) => {
+      e.preventDefault();  // Verhindert das Scrollen
     };
 
     // Event Listeners für Zeichnen
@@ -118,7 +120,10 @@ export const Canvas = component$(() => {
     // Event Listeners für Touch
     canvas.addEventListener("touchstart", (e) => startDrawing(e));
     canvas.addEventListener("touchend", stopDrawing);
-    canvas.addEventListener("touchmove", (e) => draw(e));
+    canvas.addEventListener("touchmove", (e) => {
+      draw(e);
+      preventScroll(e);  // Verhindert das Scrollen beim Zeichnen
+    });
 
     // Event Listeners für Verschiebung
     canvas.addEventListener("pointerdown", startMove);
@@ -126,7 +131,10 @@ export const Canvas = component$(() => {
     canvas.addEventListener("pointerup", stopMove);
 
     canvas.addEventListener("touchstart", startMove);
-    canvas.addEventListener("touchmove", moveCanvas);
+    canvas.addEventListener("touchmove", (e) => {
+      moveCanvas(e);
+      preventScroll(e);  // Verhindert das Scrollen beim Verschieben
+    });
     canvas.addEventListener("touchend", stopMove);
 
     socket.on("draw", ({ x, y, lastX, lastY, color, lineWidth }) => drawLine(lastX, lastY, x, y, color, lineWidth));
