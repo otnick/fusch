@@ -4,6 +4,11 @@ import io from "socket.io-client";
 export const Canvas = component$(() => {
   const color = useSignal("#000000");
   const lineWidth = useSignal(3);
+  const isDrawing = useSignal(false);  // Flag, ob der Benutzer zeichnet
+  const isMoving = useSignal(false);   // Flag, ob der Benutzer das Canvas verschiebt
+  const offsetX = useSignal(0);        // Offset für Verschiebung
+  const offsetY = useSignal(0);        // Offset für Verschiebung
+  const zoomLevel = useSignal(1);      // Zoomlevel
 
   // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(() => {
@@ -19,35 +24,34 @@ export const Canvas = component$(() => {
     window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
 
-    let drawing = false;
     let lastX = 0;
     let lastY = 0;
 
-    // pointer events
-    const startDrawing = (e: PointerEvent | TouchEvent, start: boolean) => {
-      drawing = start;
+    // Start Zeichnen
+    const startDrawing = (e: PointerEvent | TouchEvent) => {
+      if (isMoving.value) return;  // Keine Zeichnung, wenn Verschiebung aktiv ist
+      isDrawing.value = true;
       const rect = canvas.getBoundingClientRect();
       if ('touches' in e) {
-        // For touch events, use the first touch point
-        lastX = e.touches[0].clientX - rect.left;
-        lastY = e.touches[0].clientY - rect.top;
+        lastX = e.touches[0].clientX - rect.left - offsetX.value;
+        lastY = e.touches[0].clientY - rect.top - offsetY.value;
       } else {
-        // For pointer events
-        lastX = e.clientX - rect.left;
-        lastY = e.clientY - rect.top;
+        lastX = e.clientX - rect.left - offsetX.value;
+        lastY = e.clientY - rect.top - offsetY.value;
       }
     };
 
+    // Zeichnen
     const draw = (e: PointerEvent | TouchEvent) => {
-      if (!drawing) return;
+      if (!isDrawing.value) return;
       const rect = canvas.getBoundingClientRect();
       let x, y;
       if ('touches' in e) {
-        x = e.touches[0].clientX - rect.left;
-        y = e.touches[0].clientY - rect.top;
+        x = e.touches[0].clientX - rect.left - offsetX.value;
+        y = e.touches[0].clientY - rect.top - offsetY.value;
       } else {
-        x = e.clientX - rect.left;
-        y = e.clientY - rect.top;
+        x = e.clientX - rect.left - offsetX.value;
+        y = e.clientY - rect.top - offsetY.value;
       }
       socket.emit("draw", { x, y, lastX, lastY, color: color.value, lineWidth: lineWidth.value });
       drawLine(lastX, lastY, x, y, color.value, lineWidth.value);
@@ -56,18 +60,74 @@ export const Canvas = component$(() => {
     };
 
     const stopDrawing = () => {
-      drawing = false;
+      isDrawing.value = false;
     };
 
-    // Pointer events for drawing
-    canvas.addEventListener("pointerdown", (e) => startDrawing(e, true));
+    // Verschieben des Canvas
+    let startMoveX = 0;
+    let startMoveY = 0;
+
+    const startMove = (e: TouchEvent | PointerEvent) => {
+      if (isDrawing.value) return; // Verhindern, dass verschoben wird, während gezeichnet wird
+      isMoving.value = true;
+      const rect = canvas.getBoundingClientRect();
+      if ('touches' in e) {
+        startMoveX = e.touches[0].clientX - rect.left - offsetX.value;
+        startMoveY = e.touches[0].clientY - rect.top - offsetY.value;
+      } else {
+        startMoveX = e.clientX - rect.left - offsetX.value;
+        startMoveY = e.clientY - rect.top - offsetY.value;
+      }
+    };
+
+    const moveCanvas = (e: TouchEvent | PointerEvent) => {
+      if (!isMoving.value) return;
+      const rect = canvas.getBoundingClientRect();
+      let dx, dy;
+      if ('touches' in e) {
+        dx = e.touches[0].clientX - rect.left - startMoveX;
+        dy = e.touches[0].clientY - rect.top - startMoveY;
+      } else {
+        dx = e.clientX - rect.left - startMoveX;
+        dy = e.clientY - rect.top - startMoveY;
+      }
+      offsetX.value += dx;
+      offsetY.value += dy;
+      canvas.style.transform = `translate(${offsetX.value}px, ${offsetY.value}px) scale(${zoomLevel.value})`;
+      if ('touches' in e) {
+        startMoveX = e.touches[0].clientX - rect.left;
+      } else {
+        startMoveX = e.clientX - rect.left;
+      }
+      if ('touches' in e) {
+        startMoveY = e.touches[0].clientY - rect.top;
+      } else {
+        startMoveY = e.clientY - rect.top;
+      }
+    };
+
+    const stopMove = () => {
+      isMoving.value = false;
+    };
+
+    // Event Listeners für Zeichnen
+    canvas.addEventListener("pointerdown", (e) => startDrawing(e));
     canvas.addEventListener("pointerup", stopDrawing);
     canvas.addEventListener("pointermove", (e) => draw(e));
 
-    // Touch events for mobile support
-    canvas.addEventListener("touchstart", (e) => startDrawing(e, true));
+    // Event Listeners für Touch
+    canvas.addEventListener("touchstart", (e) => startDrawing(e));
     canvas.addEventListener("touchend", stopDrawing);
     canvas.addEventListener("touchmove", (e) => draw(e));
+
+    // Event Listeners für Verschiebung
+    canvas.addEventListener("pointerdown", startMove);
+    canvas.addEventListener("pointermove", moveCanvas);
+    canvas.addEventListener("pointerup", stopMove);
+
+    canvas.addEventListener("touchstart", startMove);
+    canvas.addEventListener("touchmove", moveCanvas);
+    canvas.addEventListener("touchend", stopMove);
 
     socket.on("draw", ({ x, y, lastX, lastY, color, lineWidth }) => drawLine(lastX, lastY, x, y, color, lineWidth));
     socket.on("canvasState", (commands: { x: number, y: number, lastX: number, lastY: number, color: string, lineWidth: number }[]) => {
