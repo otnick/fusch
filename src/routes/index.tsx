@@ -2,7 +2,7 @@ import { component$ } from "@builder.io/qwik";
 import { Canvas } from "~/components/Canvas";
 import type { DocumentHead } from "@builder.io/qwik-city";
 import Countdown from "~/components/Countdown";
-import ThemeToggle from "~/components/ThemeToggle";
+import PartyButton from "~/components/PartyButton";
 
 export default component$(() => {
   return (
@@ -16,7 +16,7 @@ export default component$(() => {
           <Countdown />
         </div>
       </div>
-      <ThemeToggle />
+      <PartyButton />
     </>
   );
 });

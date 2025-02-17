@@ -4,8 +4,8 @@ import confetti from "canvas-confetti";
 export default component$(() => {
   const confettiInterval = useSignal<number | undefined>(undefined);
 
-  // Helper-Funktion für zufällige Zahl in einem Bereich
-  const randomInRange = $(function randomInRange(min: number, max: number) {
+  // Helper-Funktion für zufällige Zahl in einem Bereich (asynchron)
+  const randomInRange = $(async function randomInRange(min: number, max: number) {
     return Math.random() * (max - min) + min;
   });
 
@@ -25,26 +25,34 @@ export default component$(() => {
     const animationEnd = Date.now() + duration;
     const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
 
-    confettiInterval.value = window.setInterval(async () => {
-      const timeLeft = animationEnd - Date.now();
-      if (timeLeft <= 0) {
-        stopConfetti();
-        return;
-      }
+    // Den Zufallswert für die Ursprungskoodinaten vor dem Start holen
+    const getRandomValues = async () => {
+      const x1 = await randomInRange(0.1, 0.3);
+      const x2 = await randomInRange(0.7, 0.9);
+      return { x1, x2 };
+    };
 
-      const particleCount = 50 * (timeLeft / duration);
-      // Asynchrones Warten entfernt
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: await randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
-      });
-      confetti({
-        ...defaults,
-        particleCount,
-        origin: { x: await randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
-      });
-    }, 250);
+    getRandomValues().then(({ x1, x2 }) => {
+      confettiInterval.value = window.setInterval(() => {
+        const timeLeft = animationEnd - Date.now();
+        if (timeLeft <= 0) {
+          stopConfetti();
+          return;
+        }
+
+        const particleCount = 50 * (timeLeft / duration);
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: x1, y: Math.random() - 0.2 },
+        });
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: x2, y: Math.random() - 0.2 },
+        });
+      }, 250);
+    });
   });
 
   // 🎛️ Button
