@@ -43,6 +43,27 @@ export const Canvas = component$(() => {
       lastY = y;
     });
 
+    // touch events
+    canvas.addEventListener("touchstart", (e) => {
+      drawing = true;
+      const rect = canvas.getBoundingClientRect();
+      lastX = e.touches[0].clientX - rect.left;
+      lastY = e.touches[0].clientY - rect.top;
+    });
+
+    canvas.addEventListener("touchend", () => (drawing = false));
+
+    canvas.addEventListener("touchmove", (e) => {
+      if (!drawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.touches[0].clientX - rect.left;
+      const y = e.touches[0].clientY - rect.top;
+      socket.emit("draw", { x, y, lastX, lastY, color: color.value, lineWidth: lineWidth.value });
+      drawLine(lastX, lastY, x, y, color.value, lineWidth.value);
+      lastX = x;
+      lastY = y;
+    });
+
     socket.on("draw", ({ x, y, lastX, lastY, color, lineWidth }) => drawLine(lastX, lastY, x, y, color, lineWidth));
     socket.on("canvasState", (commands: { x: number, y: number, lastX: number, lastY: number, color: string, lineWidth: number }[]) => {
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
