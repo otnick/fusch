@@ -9,6 +9,7 @@ export const Canvas = component$(() => {
   // https://fusch-backend.onrender.com
   // 192.168.1.44:3000
   // https://socket.fusch.fun/
+  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(() => {
     const socket = io("https://socket.fusch.fun/");
     const canvas = document.getElementById("drawingCanvas") as HTMLCanvasElement;
