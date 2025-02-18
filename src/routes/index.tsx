@@ -1,5 +1,5 @@
 import { component$ } from "@builder.io/qwik";
-import { Canvas } from "~/components/Canvas";
+import Canvas from "~/components/Canvas";
 import type { DocumentHead } from "@builder.io/qwik-city";
 import Countdown from "~/components/Countdown";
 import PartyButton from "~/components/PartyButton";

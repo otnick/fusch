@@ -1,13 +1,13 @@
 import { component$, useVisibleTask$, useSignal } from "@builder.io/qwik";
 import io from "socket.io-client";
+export const socket = io('https://socket.fusch.fun/');
 
-export const Canvas = component$(() => {
+export default component$(() => {
   const color = useSignal("#000000");
   const lineWidth = useSignal(3);
 
   // Initialisieren des Canvas
   useVisibleTask$(() => {
-    const socket = io("https://socket.fusch.fun/");
     const canvas = document.getElementById("drawingCanvas") as HTMLCanvasElement;
     const ctx = canvas.getContext("2d");
 
