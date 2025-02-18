@@ -7,6 +7,7 @@ export default component$(() => {
   const lineWidth = useSignal(3);
 
   // Initialisieren des Canvas
+  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(() => {
     const canvas = document.getElementById("drawingCanvas") as HTMLCanvasElement;
     const ctx = canvas.getContext("2d");
@@ -93,6 +94,7 @@ export default component$(() => {
   });
 
   // Verhindern des Scrollens
+  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(() => {
     document.body.style.overflow = 'hidden'; // Verhindert das Scrollen der Seite
   });

@@ -30,6 +30,7 @@ export default component$(() => {
     }, 250);
   });
 
+  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(() => {
     socket.on('partyState', (state: any) => {
       if (state) startConfetti();
