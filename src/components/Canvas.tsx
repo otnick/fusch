@@ -93,12 +93,6 @@ export default component$(() => {
 
   });
 
-  // Verhindern des Scrollens
-  // eslint-disable-next-line qwik/no-use-visible-task
-  useVisibleTask$(() => {
-    document.body.style.overflow = 'hidden'; // Verhindert das Scrollen der Seite
-  });
-
   return (
     <div>
       <input type="color" class="fixed bottom-6 right-4 z-50" value={color.value} onInput$={(e) => {
