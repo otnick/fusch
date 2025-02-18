@@ -1,14 +1,13 @@
 import { component$, useVisibleTask$, useSignal } from "@builder.io/qwik";
 import io from "socket.io-client";
-export const socket = io('https://socket.fusch.fun/');
 
 export default component$(() => {
   const color = useSignal("#000000");
   const lineWidth = useSignal(3);
 
   // Initialisieren des Canvas
-  // eslint-disable-next-line qwik/no-use-visible-task
   useVisibleTask$(() => {
+    const socket = io("https://socket.fusch.fun/");
     const canvas = document.getElementById("drawingCanvas") as HTMLCanvasElement;
     const ctx = canvas.getContext("2d");
 
@@ -91,6 +90,12 @@ export default component$(() => {
       commands.forEach(({ x, y, lastX, lastY, color, lineWidth }) => drawLine(lastX, lastY, x, y, color, lineWidth));
     });
 
+  });
+
+  // Verhindern des Scrollens
+  // eslint-disable-next-line qwik/no-use-visible-task
+  useVisibleTask$(() => {
+    document.body.style.overflow = 'hidden'; // Verhindert das Scrollen der Seite
   });
 
   return (
