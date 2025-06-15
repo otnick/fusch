@@ -1,0 +1,29 @@
+<script lang="ts">
+	import MicIcon from '@lucide/svelte/icons/mic';
+	import MusicIcon from '@lucide/svelte/icons/music-2';
+	import HeadphonesIcon from '@lucide/svelte/icons/headphones';
+	import ZapIcon from '@lucide/svelte/icons/zap';
+
+	const artists = [
+		{ name: 'DJ Hauki', desc: 'Techno & Acid Beats', icon: MicIcon },
+		{ name: 'DJ Klaus', desc: 'Drum & Bass Live Set', icon: ZapIcon },
+		{ name: 'DJ Ulli', desc: 'Deep House Vibes all night', icon: HeadphonesIcon },
+		{ name: 'DJ Hns', desc: 'Rawstyle & Hard Techno', icon: MusicIcon }
+	];
+</script>
+
+<div class="min-h-screen py-10 px-4 flex flex-col items-center bg-secondary-200 text-on-background">
+	<h1 class="text-3xl font-bold mb-8 text-center">Lineup 2025</h1>
+
+	<div class="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-5xl">
+		{#each artists as artist}
+			<div class="rounded-2xl shadow-md p-6 transition-transform hover:scale-105 bg-tertiary-100 hover:bg-tertiary-200">
+				<div class="flex flex-col items-center gap-4">
+					<svelte:component this={artist.icon} size={40} class="text-primary" />
+					<h2 class="text-xl font-semibold">{artist.name}</h2>
+					<p class="text-sm text-center text-muted-foreground">{artist.desc}</p>
+				</div>
+			</div>
+		{/each}
+	</div>
+</div>
