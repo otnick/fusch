@@ -33,25 +33,25 @@
 			}}
 			class="card w-full max-w-md p-6 space-y-6"
 		>
-			<h1 class="text-3xl font-bold text-center">👕 T-Shirt Interesse</h1>
+			<h1 class="text-3xl font-bold text-center text-success-950">👕 T-Shirt Interesse</h1>
 
 			{#if error}
 				<div class="alert alert-error">{error}</div>
 			{/if}
 
-			<div class="form-control">
-				<label class="label font-semibold" for="name">Name</label>
+			<div class="form-control text-success-950">
+				<label class="label font-semibold text-success-950" for="name">Name</label>
 				<input
 					id="name"
 					type="text"
 					bind:value={name}
-					class="input input-filled w-full"
+					class="input input-filled w-full text-success-950"
 					placeholder="Dein Name"
 					required
 				/>
 			</div>
 
-			<div class="form-control">
+			<div class="form-control text-success-950">
 				<label class="label font-semibold" for="size">Größe</label>
 				<select
 					id="size"
