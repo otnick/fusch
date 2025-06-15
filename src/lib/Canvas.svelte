@@ -81,12 +81,12 @@
     });
   </script>
   
-  <input type="color" bind:value={color} class="fixed bottom-6 right-4 z-50" />
-  <input type="range" min="1" max="20" bind:value={lineWidth} class="fixed bottom-7 right-24 z-50" />
+  <input type="color" bind:value={color} class="fixed top-6 left-4 z-50" />
+  <input type="range" min="1" max="20" bind:value={lineWidth} class="fixed top-7 left-24 z-50" />
   
   <canvas
     bind:this={canvas}
-    class="fixed top-0 left-0 w-full h-full"
+    class="w-full h-full"
     style="z-index: 0; pointer-events: auto; background-color: rgba(255, 255, 255, 0.05);"
   >
   </canvas>
