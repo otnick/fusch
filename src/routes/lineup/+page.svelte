@@ -26,4 +26,6 @@
 			</div>
 		{/each}
 	</div>
+	<!-- whitespace zum scrollen -->
+	<div class="h-32"></div>
 </div>
