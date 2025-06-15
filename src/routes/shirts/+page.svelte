@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-    import Countdown from '$lib/Countdown.svelte';
+	import { io } from "socket.io-client";
+
+	const socket = io("https://socket.fusch.fun/");
 
 	let name = '';
 	let size = '';
@@ -15,18 +16,23 @@
 			<p>Wir haben deine Wunschgröße <strong>{size}</strong> notiert.</p>
 		</div>
 	{:else}
-		<form on:submit|preventDefault={() => {
-			error = '';
-			if (!name.trim()) {
-				error = 'Bitte gib deinen Namen an.';
-				return;
-			}
-			if (!size) {
-				error = 'Bitte wähle eine Größe aus.';
-				return;
-			}
-			submitted = true;
-		}} class="card w-full max-w-md p-6 space-y-6">
+		<form
+			on:submit|preventDefault={() => {
+				error = '';
+				if (!name.trim()) {
+					error = 'Bitte gib deinen Namen an.';
+					return;
+				}
+				if (!size) {
+					error = 'Bitte wähle eine Größe aus.';
+					return;
+				}
+				// Hier sendest du die Daten ans Backend:
+				socket.emit("shirtInterest", { name, size });
+				submitted = true;
+			}}
+			class="card w-full max-w-md p-6 space-y-6"
+		>
 			<h1 class="text-3xl font-bold text-center">👕 T-Shirt Interesse</h1>
 
 			{#if error}

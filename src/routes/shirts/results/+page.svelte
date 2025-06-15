@@ -1,13 +1,33 @@
 <script lang="ts">
-	// Beispiel-Daten (später ersetzen durch `load` oder API)
-	let registrations = [
-		{ name: 'Anna', size: 'M' },
-		{ name: 'Ben', size: 'L' },
-		{ name: 'Clara', size: 'S' },
-		{ name: 'David', size: 'XL' }
-	];
+	import { onMount } from 'svelte';
+	import { io } from "socket.io-client";
+
+	// Startdaten (könnten auch vom Server kommen, hier nur Beispiel)
+	type Registration = { name: string; size: string };
+	let registrations: Registration[] = [];
 
 	let totalRegistrations = registrations.length;
+
+	// Socket.IO-Verbindung
+	const socket = io("https://socket.fusch.fun/");
+
+	onMount(() => {
+		// Anfrage an den Server, die bestehenden Shirt-Interessen zu bekommen
+		socket.emit("getShirtInterests");
+
+		// Antwort vom Server mit den Daten empfangen
+		socket.on("shirtInterests", (data) => {
+			registrations = data.filter((entry: { name: string; size: any; }) => entry.name?.trim() && entry.size);
+			totalRegistrations = registrations.length;
+		});
+
+		socket.on("shirtInterest", (newEntry) => {
+			if (newEntry.name?.trim() && newEntry.size) {
+				registrations = [...registrations, newEntry];
+				totalRegistrations = registrations.length;
+			}
+		});
+	});
 </script>
 
 <div class="min-h-screen p-6 flex flex-col items-center justify-start">
@@ -30,8 +50,8 @@
 				{/each}
 			</tbody>
 		</table>
-        <div>
-            Gesamt: {totalRegistrations}
-        </div>
+		<div class="mt-2 font-semibold">
+			Gesamt: {totalRegistrations}
+		</div>
 	</div>
 </div>
