@@ -5,10 +5,10 @@
 	import ZapIcon from '@lucide/svelte/icons/zap';
 
 	const artists = [
-		{ name: 'DJ Hauki', desc: 'Techno & Acid Beats', icon: MicIcon },
-		{ name: 'DJ Klaus', desc: 'Drum & Bass Live Set', icon: ZapIcon },
-		{ name: 'DJ Ulli', desc: 'Deep House Vibes all night', icon: HeadphonesIcon },
-		{ name: 'DJ Hns', desc: 'Rawstyle & Hard Techno', icon: MusicIcon }
+		{ name: 'DJ Hauki', desc: 'All-Time Classics', icon: MicIcon },
+		{ name: 'DJ Klaus', desc: 'Psychedelic & Rock', icon: ZapIcon },
+		{ name: 'uumm', desc: 'Drum & Bass', icon: HeadphonesIcon },
+		{ name: 'hns', desc: 'Drum & Bass aber anders', icon: MusicIcon }
 	];
 </script>
 
@@ -27,5 +27,5 @@
 		{/each}
 	</div>
 	<!-- whitespace zum scrollen -->
-	<div class="h-32"></div>
+	<div class="h-64"></div>
 </div>

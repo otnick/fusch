@@ -81,10 +81,10 @@
     });
   </script>
   
-  <div class="bg-secondary-50 w-56 h-7 fixed top-6 left-4 z-50 rounded-md shadow-lg flex items-center justify-center">
-    <input type="color" bind:value={color} class="fixed top-6 left-5 z-50" />
+  <div class="bg-secondary-50 w-42 h-7 fixed top-4 left-4 z-50 rounded-md shadow-lg flex items-center justify-center">
+    <input type="color" bind:value={color} class="fixed top-4 left-5 z-50" />
   </div>
-  <input type="range" min="1" max="20" bind:value={lineWidth} class="fixed top-7.5 left-24 z-50" />
+  <input type="range" min="1" max="20" bind:value={lineWidth} class="fixed top-5.5 left-24 z-50 w-20" />
   
   <canvas
     bind:this={canvas}
