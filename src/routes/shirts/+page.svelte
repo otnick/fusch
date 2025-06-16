@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { io } from "socket.io-client";
-
 	const socket = io("https://socket.fusch.fun/");
 
 	let name = '';
@@ -9,7 +8,11 @@
 	let error = '';
 </script>
 
-<div class="flex items-center justify-center min-h-screen p-4 bg-success-600">
+<!-- Verschwommenes Hintergrundbild -->
+<!-- <img src="/assets/image.jpg" alt="Motiv" class="fixed inset-0 object-cover w-full h-full blur-md" /> -->
+
+<!-- Formular Container mit höherem z-index und leicht transparentem Hintergrund -->
+<div class="relative z-10 flex items-center justify-center min-h-screen p-4 bg-success-600 bg-opacity-90">
 	{#if submitted}
 		<div class="card p-6 w-full max-w-md text-center">
 			<h2 class="text-2xl font-bold mb-4">🎉 Danke, {name}!</h2>

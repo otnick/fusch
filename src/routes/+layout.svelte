@@ -2,12 +2,15 @@
 	import '../app.css';
 	import { Navigation } from '@skeletonlabs/skeleton-svelte';
   	import IconBox from '@lucide/svelte/icons/box';
+	import Shirt from '@lucide/svelte/icons/shirt';
+	import Mic from '@lucide/svelte/icons/mic';
+	import Brush from '@lucide/svelte/icons/brush';
 	import { page } from '$app/state';
 
   const links = [
-    { label: 'Leinwand', href: '/' },
-    { label: 'Shirts', href: '/shirts' },
-    { label: 'Line-Up', href: '/lineup' },
+    { label: 'Leinwand', href: '/', icon: Brush },
+    { label: 'Shirts', href: '/shirts', icon: Shirt },
+    { label: 'Line-Up', href: '/lineup', icon: Mic },
     // { label: 'Galerie', href: '/galerie' }, TODO: Implement Galerie
   ];
 </script>
@@ -25,7 +28,8 @@
 			active="bg-success-950 text-white"
 			{...(page.url.pathname === href ? { selected: true } : {})}
 		>
-			<IconBox />
+			<svelte:component this={href === '/' ? Brush : href === '/shirts' ? Shirt : Mic} size={24} />
+			<span class="sr-only">{label}</span>
 		</Navigation.Tile>
 	{/each}
 </div>
