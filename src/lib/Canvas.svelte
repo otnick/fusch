@@ -8,8 +8,6 @@
   let ctx: CanvasRenderingContext2D;
   let socket: ReturnType<typeof io>;
 
-  // const originalOverflow = document.body.style.overflow;
-
   const resizeCanvas = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -108,14 +106,14 @@
     );
 
 
-    // document.body.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
   });
 
   onDestroy(() => {
     if (typeof window !== 'undefined') {
       window.removeEventListener("resize", () => {});
       socket?.disconnect();
-      // document.body.style.overflow = originalOverflow;
+      document.body.style.overflow = "scroll";
     }
   });
 </script>
