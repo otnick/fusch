@@ -32,61 +32,86 @@
   let analyser: AnalyserNode | null = null;
   let freqData: Uint8Array | null = null;
 
-  let audioUnlocked = false; // becomes true after first pointerdown/tap
+  let audioUnlocked = false; // true after first user gesture
   let audioPlaying = false;
 
+  // Volume (0..100)
+  let volumePct = 60;
+  $: if (audioEl) audioEl.volume = Math.min(1, Math.max(0, volumePct / 100));
+
+  function resolveUrl(state: AudioState) {
+    return state.url.startsWith("http") ? state.url : `${SERVER_URL}${state.url}`;
+  }
+
+  function ensureAudioElement(url: string) {
+    if (!audioEl) {
+      audioEl = new Audio(url);
+      audioEl.crossOrigin = "anonymous";
+      audioEl.loop = true;
+      audioEl.preload = "auto";
+    } else if (audioEl.src !== url) {
+      audioEl.src = url;
+    }
+    audioEl.volume = Math.min(1, Math.max(0, volumePct / 100));
+  }
+
+  // ✅ Create AudioContext + analyser ONLY after user gesture
+  async function ensureAudioGraph() {
+    if (!audioEl) return;
+
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+
+      const src = audioCtx.createMediaElementSource(audioEl);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+
+      src.connect(analyser);
+      analyser.connect(audioCtx.destination);
+
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+    }
+
+    if (audioCtx.state !== "running") {
+      await audioCtx.resume();
+    }
+  }
+
+  function syncAudioTime(state: AudioState) {
+    if (!audioEl || !state.startedAt) return;
+
+    const target = (Date.now() - state.startedAt) / 1000;
+    const cur = audioEl.currentTime || 0;
+    const diff = target - cur;
+
+    if (Math.abs(diff) > 0.75) audioEl.currentTime = Math.max(0, target);
+    else audioEl.currentTime = cur + diff * 0.15;
+  }
+
+  // ✅ This is the ONLY function that actually starts audio playback
+  // It assumes: audioUnlocked === true (user gesture happened)
   async function startSyncedAudio(state: AudioState) {
     if (!browser) return;
 
     if (!state.startedAt) {
-      // session not running (no connected users)
       stopAudio();
       return;
     }
 
-    const url = state.url.startsWith("http") ? state.url : `${SERVER_URL}${state.url}`;
-
     try {
-      if (!audioEl) {
-        audioEl = new Audio(url);
-        audioEl.crossOrigin = "anonymous";
-        audioEl.loop = true;
-        audioEl.preload = "auto";
-      } else if (audioEl.src !== url) {
-        audioEl.src = url;
-      }
+      const url = resolveUrl(state);
+      ensureAudioElement(url);
 
-      if (!audioCtx) {
-        audioCtx = new AudioContext();
-        const src = audioCtx.createMediaElementSource(audioEl);
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 1024;
-        src.connect(analyser);
-        analyser.connect(audioCtx.destination);
-        freqData = new Uint8Array(analyser.frequencyBinCount);
-      }
+      // after gesture -> build audio context/analyser
+      await ensureAudioGraph();
 
-      if (audioCtx.state !== "running") await audioCtx.resume();
+      syncAudioTime(state);
 
-      // sync time
-      const target = (Date.now() - state.startedAt) / 1000;
-      const cur = audioEl.currentTime || 0;
-      const diff = target - cur;
-
-      // big drift: jump
-      if (Math.abs(diff) > 0.75) {
-        audioEl.currentTime = Math.max(0, target);
-      } else {
-        // small drift: gentle nudge
-        audioEl.currentTime = cur + diff * 0.15;
-      }
-
-      await audioEl.play();
+      await audioEl!.play();
       audioPlaying = true;
     } catch (e) {
-      // keep silent; audio can fail until user gesture happens
       audioPlaying = false;
-      console.warn("Audio start failed (likely autoplay until tap):", e);
+      console.warn("Audio start failed:", e);
     }
   }
 
@@ -97,10 +122,35 @@
     } catch {}
   }
 
+  // ✅ Called on first pointerdown
   function ensureAudioUnlocked() {
     if (audioUnlocked) return;
     audioUnlocked = true;
     if (lastAudioState) startSyncedAudio(lastAudioState);
+  }
+
+  // ✅ Autoplay try: we ONLY prepare the element + try play (without AudioContext)
+  // If browser blocks it: no warning; user tap will unlock and start properly.
+  async function tryAutoplay() {
+    if (!lastAudioState?.startedAt) return;
+
+    try {
+      const url = resolveUrl(lastAudioState);
+      ensureAudioElement(url);
+      syncAudioTime(lastAudioState);
+
+      await audioEl!.play(); // may be blocked silently
+      audioPlaying = true;
+
+      // If this succeeds, we can mark unlocked (playback allowed)
+      audioUnlocked = true;
+
+      // Only now it's safe to build the graph; but we still avoid it to prevent warnings.
+      // We'll lazily create analyser on first user gesture OR you can create it here if you want.
+    } catch {
+      audioPlaying = false;
+      // Do NOT log warn here; this is expected on many browsers.
+    }
   }
 
   // -------------------------
@@ -120,7 +170,6 @@
     uUsers: { value: Array.from({ length: MAX_USERS }, () => new THREE.Vector4(0.5, 0.5, 0.0, 0.0)) },
     uUserCount: { value: 0 },
 
-    // Audio reactivity (0..1) - calmer
     uEnergy: { value: 0.0 },
     uBass: { value: 0.0 },
     uTreble: { value: 0.0 }
@@ -130,13 +179,14 @@
   // Helpers
   // -------------------------
   function resize() {
-    if (!container || !renderer) return;
-    const rect = container.getBoundingClientRect();
-    const w = Math.max(1, Math.floor(rect.width));
-    const h = Math.max(1, Math.floor(rect.height));
+    if (!renderer) return;
+
+    const vv = window.visualViewport;
+    const w = Math.max(1, Math.floor(vv?.width ?? window.innerWidth));
+    const h = Math.max(1, Math.floor(vv?.height ?? window.innerHeight));
 
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.setSize(w, h, false);
+    renderer.setSize(w, h, true);
     uniforms.uRes.value.set(w, h);
   }
 
@@ -146,9 +196,10 @@
 
   function onPointerMove(e: PointerEvent) {
     if (!container) return;
+
     if (e.type === "pointerdown") {
       container.setPointerCapture?.(e.pointerId);
-      ensureAudioUnlocked(); // <-- start audio on first user gesture (no UI)
+      ensureAudioUnlocked();
     }
 
     const rect = container.getBoundingClientRect();
@@ -173,7 +224,6 @@
     uniforms.uUserCount.value = entries.length;
   }
 
-  // Throttled send (30Hz) + only if changed
   let lastSend = 0;
   let lastSentX = 0.5;
   let lastSentY = 0.5;
@@ -223,14 +273,12 @@
     const treble = trebleSum / ((n - trebleStart) * 255);
     const energy = energySum / (energyEnd * 255);
 
-    // compress peaks -> calmer
     const compress = (x: number) => Math.pow(Math.max(0, x), 1.8);
 
     const bassC = compress(bass);
     const trebleC = compress(treble);
     const energyC = compress(energy);
 
-    // smoother & weaker
     uniforms.uBass.value = uniforms.uBass.value * 0.92 + bassC * 0.08;
     uniforms.uTreble.value = uniforms.uTreble.value * 0.92 + trebleC * 0.08;
     uniforms.uEnergy.value = uniforms.uEnergy.value * 0.92 + energyC * 0.08;
@@ -250,7 +298,6 @@
 
     updateAudioUniforms();
 
-    // calmer time drive
     const SPEED = 0.20 + 0.05 * uniforms.uEnergy.value;
     uniforms.uTime.value += dt * SPEED;
 
@@ -258,9 +305,7 @@
     prevLocalMouse.copy(localMouse);
     const v = Math.min(2, Math.max(0, velVec.length() * 12));
 
-    if (myId) {
-      users.set(myId, { x: localMouse.x, y: localMouse.y, v, updatedAt: Date.now() });
-    }
+    if (myId) users.set(myId, { x: localMouse.x, y: localMouse.y, v, updatedAt: Date.now() });
 
     sendPsyInput(v);
     updateUsersUniform();
@@ -272,6 +317,8 @@
   // -------------------------
   // Mount / Destroy
   // -------------------------
+  let vv: VisualViewport | null = null;
+
   onMount(() => {
     if (!browser) return;
     if (!container) return;
@@ -282,17 +329,14 @@
     scene = new THREE.Scene();
     camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    material = new THREE.ShaderMaterial({
-      uniforms,
-      vertexShader,
-      fragmentShader
-    });
-
-    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
-    scene.add(quad);
+    material = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader });
+    scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
 
     resize();
     window.addEventListener("resize", resize, { passive: true });
+    vv = window.visualViewport ?? null;
+    vv?.addEventListener("resize", resize, { passive: true });
+
     container.addEventListener("pointermove", onPointerMove, { passive: true });
     container.addEventListener("pointerdown", onPointerMove, { passive: true });
 
@@ -301,18 +345,15 @@
     socket.on("connect", () => {
       myId = socket!.id;
       users.clear();
-
-      // request everyone + audio state
       socket!.emit("requestPsyUsers");
-
-      // ensure we appear even if we don't move
       sendPsyInput(0, true);
     });
 
-    // audio sync
     socket.on("audio:state", (s: AudioState) => {
       lastAudioState = s;
-      if (audioUnlocked) startSyncedAudio(s);
+
+      // ✅ try autoplay WITHOUT AudioContext (no warning)
+      tryAutoplay();
     });
 
     socket.on("psyUsers", (list: Array<{ id: string; x: number; y: number; v: number; updatedAt: number }>) => {
@@ -334,7 +375,10 @@
     if (!browser) return;
 
     if (frameId !== null) cancelAnimationFrame(frameId);
+
     window.removeEventListener("resize", resize);
+    vv?.removeEventListener("resize", resize);
+
     container?.removeEventListener("pointermove", onPointerMove);
     container?.removeEventListener("pointerdown", onPointerMove);
 
@@ -342,9 +386,11 @@
     socket = null;
 
     stopAudio();
+
     try {
       audioCtx?.close();
     } catch {}
+
     audioCtx = null;
     analyser = null;
     freqData = null;
@@ -369,7 +415,7 @@
   });
 
   // -------------------------
-  // Shaders (Multi-user + calmer audio-reactive)
+  // Shaders
   // -------------------------
   const vertexShader = /* glsl */`
     varying vec2 vUv;
@@ -446,7 +492,6 @@
       vec2 pw = p;
       float glowSum = 0.0;
 
-      // calmer audio multipliers
       float audioBoost = 0.85 + 0.35 * uEnergy;
       float bassBoost  = 0.90 + 0.45 * uBass;
 
@@ -508,11 +553,119 @@
 <style>
   .container {
     position: fixed;
-    inset: 0;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
     overflow: hidden;
     background: black;
     touch-action: none;
+    z-index: 0;
+    max-width: none;
+    max-height: none;
+  }
+  .container :global(canvas) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .vol {
+    position: fixed;
+    left: 16px;
+    top: 16px;
+    z-index: 1000;
+
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(0, 0, 0, 0.55);
+    color: white;
+    backdrop-filter: blur(8px);
+
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .icon { opacity: 0.9; }
+  .pct { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .skRange {
+    width: 200px;
+    height: 18px;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .skRange::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      rgba(197, 97, 255, 0.95) var(--fill),
+      rgba(255,255,255,0.18) var(--fill)
+    );
+  }
+  .skRange::-moz-range-track {
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      rgba(197, 97, 255, 0.95) var(--fill),
+      rgba(255,255,255,0.18) var(--fill)
+    );
+  }
+
+  .skRange::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.95);
+    border: 2px solid rgba(197, 97, 255, 0.95);
+    margin-top: -4px;
+  }
+  .skRange::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.95);
+    border: 2px solid rgba(197, 97, 255, 0.95);
+  }
+
+  .hint {
+    position: fixed;
+    left: 16px;
+    top: 56px;
+    z-index: 1000;
+    color: rgba(255,255,255,0.85);
+    font-size: 12px;
   }
 </style>
 
 <div class="container" bind:this={container}></div>
+
+{#if browser}
+  <div class="vol" on:pointerdown|stopPropagation on:pointermove|stopPropagation>
+    <span class="icon">🔊</span>
+
+    <input
+      class="skRange"
+      style={`--fill:${volumePct}%`}
+      type="range"
+      min="0"
+      max="100"
+      step="1"
+      bind:value={volumePct}
+      aria-label="Volume"
+    />
+
+    <span class="pct">{volumePct}%</span>
+  </div>
+
+  {#if !audioUnlocked}
+    <div class="hint">Tippe / klicke einmal, damit Audio starten darf.</div>
+  {/if}
+{/if}

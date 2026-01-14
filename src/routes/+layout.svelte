@@ -5,11 +5,11 @@
 	import Shirt from '@lucide/svelte/icons/shirt';
 	import Mic from '@lucide/svelte/icons/mic';
 	import Brush from '@lucide/svelte/icons/brush';
-	import Disc3 from '@lucide/svelte/icons/disc-3';
+	import Headphones from '@lucide/svelte/icons/headphones';
 	import { page } from '$app/state';
 
   const links = [
-    { label: 'Party', href: '/', icon: Disc3 },
+    { label: 'Party', href: '/', icon: Headphones },
     { label: 'Shirts', href: '/shirts', icon: Shirt },
     { label: 'Line-Up', href: '/lineup', icon: Mic },
     // { label: 'Galerie', href: '/galerie' }, TODO: Implement Galerie
