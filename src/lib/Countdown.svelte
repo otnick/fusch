@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { writable } from 'svelte/store';
   
-    const targetDate = new Date("2025-07-26T12:00:00").getTime();
+    const targetDate = new Date("2026-08-08T12:00:00").getTime();
   
     function calculateTimeLeft() {
       const now = new Date().getTime();
