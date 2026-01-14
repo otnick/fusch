@@ -4,9 +4,6 @@
   import * as THREE from "three";
   import { io, type Socket } from "socket.io-client";
 
-  // -------------------------
-  // Config
-  // -------------------------
   const SERVER_URL = "https://socket.fusch.fun";
   const MAX_USERS = 16;
 
@@ -20,27 +17,27 @@
   let frameId: number | null = null;
   let socket: Socket | null = null;
 
-  // -------------------------
-  // Audio sync state (from server)
-  // -------------------------
-  type AudioState = { url: string; startedAt: number | null };
+  // ---- Audio sync state from server ----
+  type AudioState = { url: string; startedAt: number | null; sessionId: string | null };
   let lastAudioState: AudioState | null = null;
 
-  // Audio (local playback + analysis)
+  // Audio: starts ONLY after slider interaction
   let audioEl: HTMLAudioElement | null = null;
   let audioCtx: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
   let freqData: Uint8Array | null = null;
 
-  // ✅ Audio is OFF until user moves the slider
-  let audioUnlocked = false; // becomes true after slider interaction
+  let audioUnlocked = false;
   let audioPlaying = false;
 
-  // ✅ Volume (0..100) starts at 0
+  // Slider starts at 0
   let volumePct = 0;
-
-  // keep audio element volume in sync
   $: if (audioEl) audioEl.volume = Math.min(1, Math.max(0, volumePct / 100));
+
+  function dbg(...args: any[]) {
+    // eslint-disable-next-line no-console
+    console.log("[LOCAL-AUDIO]", ...args);
+  }
 
   function resolveUrl(state: AudioState) {
     return state.url.startsWith("http") ? state.url : `${SERVER_URL}${state.url}`;
@@ -49,36 +46,41 @@
   function ensureAudioElement(url: string) {
     if (!audioEl) {
       audioEl = new Audio(url);
-      audioEl.crossOrigin = "anonymous";
+      audioEl.crossOrigin = "anonymous"; // ok for local too
       audioEl.loop = true;
       audioEl.preload = "auto";
-      // iOS/Safari polish
       (audioEl as any).playsInline = true;
+
+      audioEl.addEventListener("error", () => dbg("<audio> error", audioEl?.error));
+      audioEl.addEventListener("stalled", () => dbg("stalled"));
+      audioEl.addEventListener("waiting", () => dbg("waiting"));
+      audioEl.addEventListener("playing", () => dbg("playing"));
+      audioEl.addEventListener("pause", () => dbg("paused"));
+      audioEl.addEventListener("loadedmetadata", () => dbg("loadedmetadata", { duration: audioEl?.duration }));
     } else if (audioEl.src !== url) {
+      dbg("switch audio src", { from: audioEl.src, to: url });
       audioEl.src = url;
     }
     audioEl.volume = Math.min(1, Math.max(0, volumePct / 100));
   }
 
-  // ✅ Create AudioContext + analyser ONLY after user gesture (slider move)
   async function ensureAudioGraph() {
     if (!audioEl) return;
 
     if (!audioCtx) {
       audioCtx = new AudioContext();
-
       const src = audioCtx.createMediaElementSource(audioEl);
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 1024;
-
       src.connect(analyser);
       analyser.connect(audioCtx.destination);
-
       freqData = new Uint8Array(analyser.frequencyBinCount);
+      dbg("AudioContext created");
     }
 
     if (audioCtx.state !== "running") {
       await audioCtx.resume();
+      dbg("AudioContext resumed", audioCtx.state);
     }
   }
 
@@ -93,33 +95,30 @@
 
     const cur = audioEl.currentTime || 0;
     const diff = target - cur;
-
-    // shortest wrap-around diff (handles looping)
     const wrapDiff = ((diff + dur / 2) % dur) - dur / 2;
 
     if (Math.abs(wrapDiff) > 0.75) audioEl.currentTime = Math.max(0, target);
     else audioEl.currentTime = cur + wrapDiff * 0.15;
   }
 
-  async function startSyncedAudio(state: AudioState) {
+  async function startSyncedAudio(state: AudioState, reason = "unknown") {
+    dbg("startSyncedAudio()", { reason, startedAt: state.startedAt, sessionId: state.sessionId, volumePct });
+
     if (!browser) return;
 
     if (!state.startedAt) {
+      dbg("state.startedAt is null -> stop");
       stopAudio();
       return;
     }
 
-    try {
-      const url = resolveUrl(state);
-      ensureAudioElement(url);
+    const url = resolveUrl(state);
+    ensureAudioElement(url);
 
-      // after slider gesture -> build audio context/analyser
+    try {
       await ensureAudioGraph();
 
-      // try to sync (might be a no-op until metadata loaded)
-      syncAudioTime(state);
-
-      // if duration isn't ready yet, sync again once metadata arrives
+      // sync after metadata if needed
       if (!Number.isFinite(audioEl!.duration) || audioEl!.duration <= 0) {
         audioEl!.addEventListener(
           "loadedmetadata",
@@ -128,13 +127,22 @@
           },
           { once: true }
         );
+      } else {
+        syncAudioTime(state);
+      }
+
+      // Only play if volume > 0 (slider enables)
+      if (volumePct <= 0) {
+        dbg("volume is 0 -> not playing (by design)");
+        return;
       }
 
       await audioEl!.play();
       audioPlaying = true;
+      dbg("play() ok", { currentTime: audioEl!.currentTime, duration: audioEl!.duration });
     } catch (e) {
       audioPlaying = false;
-      console.warn("Audio start failed:", e);
+      dbg("start failed", e);
     }
   }
 
@@ -145,22 +153,16 @@
     } catch {}
   }
 
-  // ✅ Unlock ONLY via slider interaction
   async function unlockAudioViaSlider() {
     if (audioUnlocked) return;
     audioUnlocked = true;
-    if (lastAudioState) await startSyncedAudio(lastAudioState);
+    dbg("audio unlocked via slider");
+
+    if (lastAudioState) await startSyncedAudio(lastAudioState, "unlock");
+    else dbg("no lastAudioState yet");
   }
 
-  // ✅ NO autoplay anymore (music should NOT start until slider moved)
-  // (kept as a stub to make intent explicit)
-  async function tryAutoplay() {
-    return;
-  }
-
-  // -------------------------
-  // Local pointer target (0..1)
-  // -------------------------
+  // ---- Mouse/Users (unchanged logic) ----
   const localMouse = new THREE.Vector2(0.5, 0.5);
   const prevLocalMouse = new THREE.Vector2(0.5, 0.5);
 
@@ -168,42 +170,30 @@
   const users = new Map<string, PsyUser>();
   let myId: string | null = null;
 
-  // Uniforms
   const uniforms = {
     uTime: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
-    uUsers: {
-      value: Array.from({ length: MAX_USERS }, () => new THREE.Vector4(0.5, 0.5, 0.0, 0.0))
-    },
+    uUsers: { value: Array.from({ length: MAX_USERS }, () => new THREE.Vector4(0.5, 0.5, 0.0, 0.0)) },
     uUserCount: { value: 0 },
-
     uEnergy: { value: 0.0 },
     uBass: { value: 0.0 },
     uTreble: { value: 0.0 }
   };
 
-  // -------------------------
-  // Helpers
-  // -------------------------
   function resize() {
     if (!renderer) return;
-
     const vv = window.visualViewport;
     const w = Math.max(1, Math.floor(vv?.width ?? window.innerWidth));
     const h = Math.max(1, Math.floor(vv?.height ?? window.innerHeight));
-
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(w, h, true);
     uniforms.uRes.value.set(w, h);
   }
 
-  function clamp01(n: number) {
-    return Math.min(1, Math.max(0, n));
-  }
+  function clamp01(n: number) { return Math.min(1, Math.max(0, n)); }
 
   function onPointerMove(e: PointerEvent) {
     if (!container) return;
-
     const rect = container.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
     const y = 1 - (e.clientY - rect.top) / rect.height;
@@ -222,17 +212,12 @@
       const [, s] = entries[i];
       arr[i].set(s.x, s.y, s.v, 1.0);
     }
-
     uniforms.uUserCount.value = entries.length;
   }
 
-  let lastSend = 0;
-  let lastSentX = 0.5;
-  let lastSentY = 0.5;
-
+  let lastSend = 0, lastSentX = 0.5, lastSentY = 0.5;
   function sendPsyInput(v: number, force = false) {
     if (!socket || !myId) return;
-
     const now = performance.now();
     if (!force && now - lastSend < 33) return;
 
@@ -262,21 +247,15 @@
     const trebleStart = Math.floor(n * 0.75);
     const energyEnd = Math.floor(n * 0.5);
 
-    let bassSum = 0;
-    for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
-
-    let trebleSum = 0;
-    for (let i = trebleStart; i < n; i++) trebleSum += freqData[i];
-
-    let energySum = 0;
-    for (let i = 0; i < energyEnd; i++) energySum += freqData[i];
+    let bassSum = 0; for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
+    let trebleSum = 0; for (let i = trebleStart; i < n; i++) trebleSum += freqData[i];
+    let energySum = 0; for (let i = 0; i < energyEnd; i++) energySum += freqData[i];
 
     const bass = bassSum / (bassEnd * 255);
     const treble = trebleSum / ((n - trebleStart) * 255);
     const energy = energySum / (energyEnd * 255);
 
     const compress = (x: number) => Math.pow(Math.max(0, x), 1.8);
-
     const bassC = compress(bass);
     const trebleC = compress(treble);
     const energyC = compress(energy);
@@ -286,12 +265,7 @@
     uniforms.uEnergy.value = uniforms.uEnergy.value * 0.92 + energyC * 0.08;
   }
 
-  // -------------------------
-  // Animation loop
-  // -------------------------
-  let last = 0;
-  let lastResync = 0;
-
+  let last = 0, lastResync = 0;
   function animate(now = performance.now()) {
     if (!renderer || !scene || !camera) return;
 
@@ -301,12 +275,9 @@
 
     updateAudioUniforms();
 
-    // gentle resync every ~1s
-    if (audioPlaying && lastAudioState?.startedAt) {
-      if (now - lastResync > 1000) {
-        syncAudioTime(lastAudioState);
-        lastResync = now;
-      }
+    if (audioPlaying && lastAudioState?.startedAt && now - lastResync > 1000) {
+      syncAudioTime(lastAudioState);
+      lastResync = now;
     }
 
     const SPEED = 0.20 + 0.05 * uniforms.uEnergy.value;
@@ -325,21 +296,16 @@
     frameId = requestAnimationFrame(animate);
   }
 
-  // -------------------------
-  // Mount / Destroy
-  // -------------------------
   let vv: VisualViewport | null = null;
 
   onMount(() => {
-    if (!browser) return;
-    if (!container) return;
+    if (!browser || !container) return;
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     container.appendChild(renderer.domElement);
 
     scene = new THREE.Scene();
     camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-
     material = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader });
     scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
 
@@ -349,24 +315,23 @@
     vv?.addEventListener("resize", resize, { passive: true });
 
     container.addEventListener("pointermove", onPointerMove, { passive: true });
-    container.addEventListener("pointerdown", onPointerMove, { passive: true });
 
     socket = io(SERVER_URL, { transports: ["websocket"] });
 
     socket.on("connect", () => {
-      myId = socket!.id;
+      dbg("socket connected", socket!.id);
+      myId = socket!.id!;
       users.clear();
       socket!.emit("requestPsyUsers");
       sendPsyInput(0, true);
     });
 
     socket.on("audio:state", (s: AudioState) => {
+      dbg("audio:state", s);
       lastAudioState = s;
 
-      // ✅ do NOT start music automatically anymore
-      // start only after slider interaction (audioUnlocked === true)
-      if (audioUnlocked) startSyncedAudio(s);
-      else tryAutoplay();
+      if (audioUnlocked && volumePct > 0) startSyncedAudio(s, "server update");
+      if (audioUnlocked && !s.startedAt) dbg("⚠️ startedAt null from server (no session running?)");
     });
 
     socket.on("psyUsers", (list: Array<{ id: string; x: number; y: number; v: number; updatedAt: number }>) => {
@@ -377,40 +342,30 @@
       users.set(u.id, { x: u.x, y: u.y, v: u.v ?? 0, updatedAt: u.updatedAt ?? Date.now() });
     });
 
-    socket.on("psyUserLeft", ({ id }: { id: string }) => {
-      users.delete(id);
-    });
+    socket.on("psyUserLeft", ({ id }: { id: string }) => users.delete(id));
 
     animate();
   });
 
   onDestroy(() => {
     if (!browser) return;
-
     if (frameId !== null) cancelAnimationFrame(frameId);
 
     window.removeEventListener("resize", resize);
     vv?.removeEventListener("resize", resize);
-
     container?.removeEventListener("pointermove", onPointerMove);
-    container?.removeEventListener("pointerdown", onPointerMove);
 
     socket?.disconnect();
     socket = null;
 
     stopAudio();
-
-    try {
-      audioCtx?.close();
-    } catch {}
-
+    try { audioCtx?.close(); } catch {}
     audioCtx = null;
     analyser = null;
     freqData = null;
     audioEl = null;
 
     material?.dispose();
-
     if (scene) {
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
@@ -427,15 +382,9 @@
     material = null;
   });
 
-  // -------------------------
-  // Shaders
-  // -------------------------
   const vertexShader = /* glsl */ `
     varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = vec4(position.xy, 0.0, 1.0);
-    }
+    void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
   `;
 
   const fragmentShader = /* glsl */ `
@@ -451,217 +400,130 @@
     uniform float uBass;
     uniform float uTreble;
 
-    float hash21(vec2 p) {
-      p = fract(p * vec2(123.34, 345.45));
-      p += dot(p, p + 34.345);
-      return fract(p.x * p.y);
+    float hash21(vec2 p){ p=fract(p*vec2(123.34,345.45)); p+=dot(p,p+34.345); return fract(p.x*p.y); }
+    float noise(vec2 p){
+      vec2 i=floor(p), f=fract(p);
+      float a=hash21(i), b=hash21(i+vec2(1.,0.)), c=hash21(i+vec2(0.,1.)), d=hash21(i+vec2(1.,1.));
+      vec2 u=f*f*(3.-2.*f);
+      return mix(a,b,u.x)+(c-a)*u.y*(1.-u.x)+(d-b)*u.x*u.y;
     }
-
-    float noise(vec2 p) {
-      vec2 i = floor(p);
-      vec2 f = fract(p);
-      float a = hash21(i);
-      float b = hash21(i + vec2(1.0, 0.0));
-      float c = hash21(i + vec2(0.0, 1.0));
-      float d = hash21(i + vec2(1.0, 1.0));
-      vec2 u = f * f * (3.0 - 2.0 * f);
-      return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-    }
-
-    float fbm(vec2 p) {
-      float v = 0.0;
-      float a = 0.5;
-      mat2 m = mat2(1.6, -1.2, 1.2, 1.6);
-      for (int i = 0; i < 5; i++) {
-        v += a * noise(p);
-        p = m * p;
-        a *= 0.55;
-      }
+    float fbm(vec2 p){
+      float v=0., a=0.5;
+      mat2 m=mat2(1.6,-1.2,1.2,1.6);
+      for(int i=0;i<5;i++){ v+=a*noise(p); p=m*p; a*=0.55; }
       return v;
     }
-
-    vec3 hsv2rgb(vec3 c) {
-      vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-      vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-      return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+    vec3 hsv2rgb(vec3 c){
+      vec4 K=vec4(1.,2./3.,1./3.,3.);
+      vec3 p=abs(fract(c.xxx+K.xyz)*6.-K.www);
+      return c.z*mix(K.xxx, clamp(p-K.xxx,0.,1.), c.y);
+    }
+    vec2 swirl(vec2 p, vec2 center, float strength){
+      vec2 d=p-center; float r=length(d);
+      float ang=strength*exp(-r*3.5);
+      float s=sin(ang), c=cos(ang);
+      mat2 rot=mat2(c,-s,s,c);
+      return center+rot*d;
     }
 
-    vec2 swirl(vec2 p, vec2 center, float strength) {
-      vec2 d = p - center;
-      float r = length(d);
-      float ang = strength * exp(-r * 3.5);
-      float s = sin(ang), c = cos(ang);
-      mat2 rot = mat2(c, -s, s, c);
-      return center + rot * d;
-    }
+    void main(){
+      vec2 uv=vUv;
 
-    void main() {
-      vec2 uv = vUv;
+      vec2 p=(uv*2.-1.);
+      float aspect=uRes.x/uRes.y;
+      p.x*=aspect;
 
-      vec2 p = (uv * 2.0 - 1.0);
-      float aspect = uRes.x / uRes.y;
-      p.x *= aspect;
+      vec2 pw=p;
+      float glowSum=0.;
 
-      vec2 pw = p;
-      float glowSum = 0.0;
+      float audioBoost=0.85+0.35*uEnergy;
+      float bassBoost =0.90+0.45*uBass;
 
-      float audioBoost = 0.85 + 0.35 * uEnergy;
-      float bassBoost  = 0.90 + 0.45 * uBass;
+      for(int i=0;i<16;i++){
+        vec4 u=uUsers[i];
+        if(u.w<0.5) continue;
 
-      for (int i = 0; i < 16; i++) {
-        vec4 u = uUsers[i];
-        if (u.w < 0.5) continue;
+        vec2 m=(u.xy*2.-1.); m.x*=aspect;
+        float v=clamp(u.z,0.,2.);
 
-        vec2 m = (u.xy * 2.0 - 1.0);
-        m.x *= aspect;
+        float strength=(0.48+0.34*v)*bassBoost;
+        pw=swirl(pw,m,strength);
 
-        float v = clamp(u.z, 0.0, 2.0);
-
-        float strength = (0.48 + 0.34 * v) * bassBoost;
-        pw = swirl(pw, m, strength);
-
-        float dist = length(pw - m);
-        glowSum += exp(-dist * (2.7 + 0.5 * uTreble)) * (0.08 + 0.18 * v) * audioBoost;
+        float dist=length(pw-m);
+        glowSum+=exp(-dist*(2.7+0.5*uTreble))*(0.08+0.18*v)*audioBoost;
       }
 
-      float t = uTime * (0.30 + 0.08 * uEnergy);
+      float t=uTime*(0.30+0.08*uEnergy);
 
-      vec2 q = pw;
-      q += (0.20 + 0.04 * uBass) * vec2(
-        fbm(pw * 2.0 + vec2(0.0, t)),
-        fbm(pw * 2.0 + vec2(t, 0.0))
+      vec2 q=pw;
+      q+=(0.20+0.04*uBass)*vec2(
+        fbm(pw*2.+vec2(0.,t)),
+        fbm(pw*2.+vec2(t,0.))
       );
 
-      vec2 r = q;
-      r += (0.34 + 0.06 * uEnergy) * vec2(
-        fbm(q * 2.6 + vec2(2.1, 1.7) + t),
-        fbm(q * 2.6 + vec2(1.3, 2.9) - t)
+      vec2 r=q;
+      r+=(0.34+0.06*uEnergy)*vec2(
+        fbm(q*2.6+vec2(2.1,1.7)+t),
+        fbm(q*2.6+vec2(1.3,2.9)-t)
       );
 
-      float f = fbm(r * (2.4 + 0.25 * uTreble) - t);
+      float f=fbm(r*(2.4+0.25*uTreble)-t);
 
-      float stripes = 0.5 + 0.5 * sin(
-        (r.x * (4.4 + 0.45 * uTreble) + r.y * (2.9 + 0.35 * uTreble))
-        + f * (5.6 + 0.9 * uEnergy)
-        + uTime * (0.70 + 0.10 * uEnergy)
+      float stripes=0.5+0.5*sin(
+        (r.x*(4.4+0.45*uTreble)+r.y*(2.9+0.35*uTreble))
+        + f*(5.6+0.9*uEnergy)
+        + uTime*(0.70+0.10*uEnergy)
       );
 
-      float hue = fract(0.13 * r.x + 0.18 * r.y + f * 0.55 + uTime * (0.06 + 0.04 * uTreble));
-      float sat = 0.82 + 0.08 * sin(uTime + f * (5.0 + 1.0 * uEnergy));
-      float val = 0.60 + (0.30 + 0.12 * uEnergy) * pow(stripes, 1.2);
+      float hue=fract(0.13*r.x+0.18*r.y+f*0.55+uTime*(0.06+0.04*uTreble));
+      float sat=0.82+0.08*sin(uTime+f*(5.0+1.0*uEnergy));
+      float val=0.60+(0.30+0.12*uEnergy)*pow(stripes,1.2);
 
-      val += glowSum;
-      sat += glowSum * 0.22;
+      val+=glowSum;
+      sat+=glowSum*0.22;
 
-      vec3 col = hsv2rgb(vec3(hue, clamp(sat, 0.0, 1.0), clamp(val, 0.0, 1.0)));
+      vec3 col=hsv2rgb(vec3(hue, clamp(sat,0.,1.), clamp(val,0.,1.)));
 
-      float vig = smoothstep(1.35, 0.2, length(p));
-      col *= vig;
+      float vig=smoothstep(1.35,0.2,length(p));
+      col*=vig;
 
-      gl_FragColor = vec4(col, 1.0);
+      gl_FragColor=vec4(col,1.);
     }
   `;
 </script>
 
 <style>
-  .container {
-    position: fixed;
-    left: 0;
-    top: 0;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    background: black;
-    touch-action: none;
-    z-index: 0;
-    max-width: none;
-    max-height: none;
-  }
-  .container :global(canvas) {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
+  .container { position: fixed; inset: 0; overflow: hidden; background: black; touch-action: none; max-width: none;
+    max-height: none; }
+  .container :global(canvas) { display:block; width:100%; height:100%; }
 
   .vol {
-    position: fixed;
-    left: 16px;
-    top: 16px;
-    z-index: 1000;
-
-    padding: 10px 12px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(0, 0, 0, 0.55);
-    color: white;
-    backdrop-filter: blur(8px);
-
-    display: flex;
-    gap: 10px;
-    align-items: center;
+    position: fixed; left: 16px; top: 16px; z-index: 1000;
+    padding: 10px 12px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(0,0,0,0.55); color: white; backdrop-filter: blur(8px);
+    display: flex; gap: 10px; align-items: center;
   }
-
-  .icon {
-    opacity: 0.9;
-  }
-  .pct {
-    min-width: 44px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .skRange {
-    width: 200px;
-    height: 18px;
-    appearance: none;
-    background: transparent;
-    cursor: pointer;
-  }
-
+  .pct { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .skRange { width: 200px; height: 18px; appearance: none; background: transparent; cursor: pointer; }
   .skRange::-webkit-slider-runnable-track {
-    height: 8px;
-    border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      rgba(197, 97, 255, 0.95) var(--fill),
-      rgba(255, 255, 255, 0.18) var(--fill)
-    );
+    height: 8px; border-radius: 999px;
+    background: linear-gradient(90deg, rgba(197,97,255,0.95) var(--fill), rgba(255,255,255,0.18) var(--fill));
   }
   .skRange::-moz-range-track {
-    height: 8px;
-    border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      rgba(197, 97, 255, 0.95) var(--fill),
-      rgba(255, 255, 255, 0.18) var(--fill)
-    );
+    height: 8px; border-radius: 999px;
+    background: linear-gradient(90deg, rgba(197,97,255,0.95) var(--fill), rgba(255,255,255,0.18) var(--fill));
   }
-
   .skRange::-webkit-slider-thumb {
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.95);
-    border: 2px solid rgba(197, 97, 255, 0.95);
+    appearance: none; width:16px; height:16px; border-radius:999px;
+    background: rgba(255,255,255,0.95); border: 2px solid rgba(197,97,255,0.95);
     margin-top: -4px;
   }
   .skRange::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.95);
-    border: 2px solid rgba(197, 97, 255, 0.95);
+    width:16px; height:16px; border-radius:999px;
+    background: rgba(255,255,255,0.95); border: 2px solid rgba(197,97,255,0.95);
   }
-
-  .hint {
-    position: fixed;
-    left: 16px;
-    top: 56px;
-    z-index: 1000;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 12px;
-  }
+  .hint { position: fixed; left: 16px; top: 56px; z-index: 1000; color: rgba(255,255,255,0.85); font-size: 12px; }
 </style>
 
 <div class="container" bind:this={container}></div>
@@ -679,21 +541,19 @@
       step="1"
       bind:value={volumePct}
       aria-label="Volume"
-      on:input={(e) => {
+      on:input={async (e) => {
         e.stopPropagation();
 
-        // first slider move = user gesture unlock + start
-        if (!audioUnlocked) unlockAudioViaSlider();
+        // unlock on first non-zero movement
+        if (!audioUnlocked && volumePct > 0) await unlockAudioViaSlider();
 
-        // if user drags back to 0, we can pause (optional)
         if (audioUnlocked && volumePct <= 0 && audioPlaying) stopAudio();
-        // if user raises from 0 and we have state, resume (optional)
-        if (audioUnlocked && volumePct > 0 && lastAudioState?.startedAt && !audioPlaying) startSyncedAudio(lastAudioState);
+        if (audioUnlocked && volumePct > 0 && lastAudioState?.startedAt && !audioPlaying) {
+          await startSyncedAudio(lastAudioState, "slider resume");
+        }
       }}
       on:pointerdown={(e) => {
-        // counts as gesture too (desktop)
         e.stopPropagation();
-        if (!audioUnlocked) unlockAudioViaSlider();
       }}
     />
 
