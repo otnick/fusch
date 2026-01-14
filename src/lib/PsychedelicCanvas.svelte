@@ -7,7 +7,7 @@ import { io, type Socket } from "socket.io-client";
 // -------------------------
 // Config
 // -------------------------
-const SERVER_URL = "http://localhost:3000"; // <-- anpassen
+const SERVER_URL = "socket.fusch.fun"; // <-- anpassen
 const MAX_USERS = 16;
 
 let container: HTMLDivElement | null = null;
