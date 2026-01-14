@@ -7,7 +7,8 @@
   // -------------------------
   // Config
   // -------------------------
-  const SERVER_URL = "https://socket.fusch.fun"; // <-- wichtig: Schema!
+  const SERVER_URL = "https://socket.fusch.fun"; // Socket.IO endpoint (https!)
+  const AUDIO_URL = "https://socket.fusch.fun/audio/set.wav"; // <-- deine Audio-Route
   const MAX_USERS = 16;
 
   let container: HTMLDivElement | null = null;
@@ -20,7 +21,59 @@
   let frameId: number | null = null;
   let socket: Socket | null = null;
 
+  // -------------------------
+  // Audio (local reactive)
+  // -------------------------
+  let audioEl: HTMLAudioElement | null = null;
+  let audioCtx: AudioContext | null = null;
+  let analyser: AnalyserNode | null = null;
+  let freqData: Uint8Array | null = null;
+
+  let audioPlaying = false;
+  let audioError: string | null = null;
+
+  async function startAudio() {
+    audioError = null;
+
+    try {
+      if (!audioEl) {
+        audioEl = new Audio(AUDIO_URL);
+        audioEl.crossOrigin = "anonymous";
+        audioEl.loop = true;
+        audioEl.preload = "auto";
+      }
+
+      if (!audioCtx) {
+        audioCtx = new AudioContext();
+        const src = audioCtx.createMediaElementSource(audioEl);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 1024; // 512 bins
+        src.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        freqData = new Uint8Array(analyser.frequencyBinCount);
+      }
+
+      if (audioCtx.state !== "running") await audioCtx.resume();
+      await audioEl.play();
+      audioPlaying = true;
+    } catch (e: any) {
+      audioPlaying = false;
+      audioError = e?.message ?? "Audio konnte nicht gestartet werden.";
+      // Autoplay-Policy / CORS / 404 sind die üblichen Gründe
+      console.error(e);
+    }
+  }
+
+  function stopAudio() {
+    audioPlaying = false;
+    try {
+      audioEl?.pause();
+    } catch {}
+  }
+
+  // -------------------------
   // Local pointer target (0..1)
+  // -------------------------
   const localMouse = new THREE.Vector2(0.5, 0.5);
   const prevLocalMouse = new THREE.Vector2(0.5, 0.5);
 
@@ -34,7 +87,12 @@
     uTime: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
     uUsers: { value: Array.from({ length: MAX_USERS }, () => new THREE.Vector4(0.5, 0.5, 0.0, 0.0)) },
-    uUserCount: { value: 0 }
+    uUserCount: { value: 0 },
+
+    // Audio reactivity (0..1)
+    uEnergy: { value: 0.0 },
+    uBass: { value: 0.0 },
+    uTreble: { value: 0.0 }
   };
 
   // -------------------------
@@ -105,6 +163,44 @@
     socket.emit("psy:input", { x: localMouse.x, y: localMouse.y, v, ts: Date.now() });
   }
 
+  function updateAudioUniforms() {
+    if (!analyser || !freqData || !audioPlaying) {
+      uniforms.uEnergy.value *= 0.985;
+      uniforms.uBass.value *= 0.985;
+      uniforms.uTreble.value *= 0.985;
+      return;
+    }
+
+    analyser.getByteFrequencyData(freqData);
+
+    // Frequency bins: 0..(fftSize/2 - 1)
+    // Wir nehmen grob: Bass = erste ~8%, Treble = letzte ~25%
+    const n = freqData.length;
+
+    const bassEnd = Math.max(8, Math.floor(n * 0.08));
+    const trebleStart = Math.floor(n * 0.75);
+
+    let bassSum = 0;
+    for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
+
+    let trebleSum = 0;
+    for (let i = trebleStart; i < n; i++) trebleSum += freqData[i];
+
+    // Gesamtenergie = Mittelwert über z.B. erste Hälfte (wirkt musikalischer)
+    const energyEnd = Math.floor(n * 0.5);
+    let energySum = 0;
+    for (let i = 0; i < energyEnd; i++) energySum += freqData[i];
+
+    const bass = bassSum / (bassEnd * 255);
+    const treble = trebleSum / ((n - trebleStart) * 255);
+    const energy = energySum / (energyEnd * 255);
+
+    // smoothing
+    uniforms.uBass.value = uniforms.uBass.value * 0.85 + bass * 0.15;
+    uniforms.uTreble.value = uniforms.uTreble.value * 0.85 + treble * 0.15;
+    uniforms.uEnergy.value = uniforms.uEnergy.value * 0.85 + energy * 0.15;
+  }
+
   // -------------------------
   // Animation loop
   // -------------------------
@@ -117,14 +213,19 @@
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
 
-    const SPEED = 0.22;
+    // time: leicht musik-getrieben
+    const SPEED = 0.20 + 0.10 * uniforms.uEnergy.value;
     uniforms.uTime.value += dt * SPEED;
 
+    // update audio → uniforms
+    updateAudioUniforms();
+
+    // mouse velocity → v
     const velVec = localMouse.clone().sub(prevLocalMouse);
     prevLocalMouse.copy(localMouse);
-
     const v = Math.min(2, Math.max(0, velVec.length() * 12));
 
+    // own state locally (so you see yourself even if no echo)
     if (myId) {
       users.set(myId, { x: localMouse.x, y: localMouse.y, v, updatedAt: Date.now() });
     }
@@ -143,6 +244,7 @@
     if (!browser) return;
     if (!container) return;
 
+    // three.js
     renderer = new THREE.WebGLRenderer({ antialias: true });
     container.appendChild(renderer.domElement);
 
@@ -163,6 +265,7 @@
     container.addEventListener("pointermove", onPointerMove, { passive: true });
     container.addEventListener("pointerdown", onPointerMove, { passive: true });
 
+    // socket.io
     socket = io(SERVER_URL, {
       transports: ["websocket"]
       // path: "/socket.io" // nur nötig, wenn dein Proxy einen anderen Path nutzt
@@ -200,6 +303,15 @@
     socket?.disconnect();
     socket = null;
 
+    stopAudio();
+    try {
+      audioCtx?.close();
+    } catch {}
+    audioCtx = null;
+    analyser = null;
+    freqData = null;
+    audioEl = null;
+
     material?.dispose();
 
     if (scene) {
@@ -219,7 +331,7 @@
   });
 
   // -------------------------
-  // Shaders (Multi-user)
+  // Shaders (Multi-user + audio-reactive)
   // -------------------------
   const vertexShader = /* glsl */`
     varying vec2 vUv;
@@ -237,6 +349,10 @@
     uniform vec2 uRes;
     uniform vec4 uUsers[16];
     uniform int uUserCount;
+
+    uniform float uEnergy;
+    uniform float uBass;
+    uniform float uTreble;
 
     float hash21(vec2 p) {
       p = fract(p * vec2(123.34, 345.45));
@@ -292,6 +408,10 @@
       vec2 pw = p;
       float glowSum = 0.0;
 
+      // audio: macht Swirls + Glow lebendiger
+      float audioBoost = 0.6 + 1.2 * uEnergy;
+      float bassBoost = 0.8 + 1.4 * uBass;
+
       for (int i = 0; i < 16; i++) {
         vec4 u = uUsers[i];
         if (u.w < 0.5) continue;
@@ -301,32 +421,38 @@
 
         float v = clamp(u.z, 0.0, 2.0);
 
-        float strength = 0.55 + 0.45 * v;
+        float strength = (0.50 + 0.40 * v) * bassBoost;
         pw = swirl(pw, m, strength);
 
         float dist = length(pw - m);
-        glowSum += exp(-dist * 2.8) * (0.12 + 0.18 * v);
+        glowSum += exp(-dist * (2.6 + 1.0 * uTreble)) * (0.10 + 0.22 * v) * audioBoost;
       }
 
-      float t = uTime * 0.30;
+      float t = uTime * (0.28 + 0.22 * uEnergy);
+
       vec2 q = pw;
-      q += 0.22 * vec2(
+      q += (0.20 + 0.08 * uBass) * vec2(
         fbm(pw * 2.0 + vec2(0.0, t)),
         fbm(pw * 2.0 + vec2(t, 0.0))
       );
 
       vec2 r = q;
-      r += 0.38 * vec2(
+      r += (0.34 + 0.12 * uEnergy) * vec2(
         fbm(q * 2.6 + vec2(2.1, 1.7) + t),
         fbm(q * 2.6 + vec2(1.3, 2.9) - t)
       );
 
-      float f = fbm(r * 2.6 - t);
-      float stripes = 0.5 + 0.5 * sin((r.x * 4.6 + r.y * 3.0) + f * 5.8 + uTime * 0.75);
+      float f = fbm(r * (2.4 + 0.7 * uTreble) - t);
 
-      float hue = fract(0.13 * r.x + 0.18 * r.y + f * 0.55 + uTime * 0.06);
-      float sat = 0.85 + 0.10 * sin(uTime + f * 5.0);
-      float val = 0.62 + 0.32 * pow(stripes, 1.2);
+      float stripes = 0.5 + 0.5 * sin(
+        (r.x * (4.4 + 1.2 * uTreble) + r.y * (2.9 + 0.9 * uTreble))
+        + f * (5.6 + 2.0 * uEnergy)
+        + uTime * (0.70 + 0.35 * uEnergy)
+      );
+
+      float hue = fract(0.13 * r.x + 0.18 * r.y + f * 0.55 + uTime * (0.06 + 0.10 * uTreble));
+      float sat = 0.82 + 0.12 * sin(uTime + f * (5.0 + 3.0 * uEnergy));
+      float val = 0.60 + (0.30 + 0.30 * uEnergy) * pow(stripes, 1.2);
 
       val += glowSum;
       sat += glowSum * 0.25;
@@ -349,6 +475,49 @@
     background: black;
     touch-action: none;
   }
+
+  .audioBtn {
+    position: fixed;
+    left: 16px;
+    top: 16px;
+    z-index: 10;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(197, 97, 255, 0.55);
+    color: white;
+    font: inherit;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+  }
+
+  .audioErr {
+    position: fixed;
+    left: 16px;
+    bottom: 64px;
+    z-index: 10;
+    max-width: min(560px, calc(100vw - 32px));
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 80, 80, 0.35);
+    background: rgba(0, 0, 0, 0.65);
+    color: rgba(255, 220, 220, 1);
+    font: inherit;
+    backdrop-filter: blur(8px);
+  }
 </style>
 
 <div class="container" bind:this={container}></div>
+
+{#if browser}
+  <button class="audioBtn" on:click={() => (audioPlaying ? stopAudio() : startAudio())}>
+    {audioPlaying ? "Stop Audio" : "Start Audio"}
+  </button>
+
+  {#if audioError}
+    <div class="audioErr">
+      {audioError}<br />
+      Tipp: Prüfe, ob <code>{AUDIO_URL}</code> im Browser erreichbar ist und ob der Server CORS/Range erlaubt.
+    </div>
+  {/if}
+{/if}
