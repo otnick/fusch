@@ -49,6 +49,8 @@
       audioEl.crossOrigin = "anonymous";
       audioEl.loop = true;
       audioEl.preload = "auto";
+      // iOS/Safari polish
+      (audioEl as any).playsInline = true;
     } else if (audioEl.src !== url) {
       audioEl.src = url;
     }
@@ -145,11 +147,10 @@
       // If this succeeds, we can mark unlocked (playback allowed)
       audioUnlocked = true;
 
-      // Only now it's safe to build the graph; but we still avoid it to prevent warnings.
-      // We'll lazily create analyser on first user gesture OR you can create it here if you want.
+      // We still avoid building analyser here to prevent warnings.
     } catch {
       audioPlaying = false;
-      // Do NOT log warn here; this is expected on many browsers.
+      // expected on many browsers
     }
   }
 
@@ -288,6 +289,7 @@
   // Animation loop
   // -------------------------
   let last = 0;
+  let lastResync = 0;
 
   function animate(now = performance.now()) {
     if (!renderer || !scene || !camera) return;
@@ -297,6 +299,14 @@
     last = now;
 
     updateAudioUniforms();
+
+    // ✅ gentle resync every ~1s
+    if (audioPlaying && lastAudioState?.startedAt) {
+      if (now - lastResync > 1000) {
+        syncAudioTime(lastAudioState);
+        lastResync = now;
+      }
+    }
 
     const SPEED = 0.20 + 0.05 * uniforms.uEnergy.value;
     uniforms.uTime.value += dt * SPEED;
@@ -352,8 +362,9 @@
     socket.on("audio:state", (s: AudioState) => {
       lastAudioState = s;
 
-      // ✅ try autoplay WITHOUT AudioContext (no warning)
-      tryAutoplay();
+      // ✅ If already unlocked -> start properly (with AudioContext + analyser + sync)
+      if (audioUnlocked) startSyncedAudio(s);
+      else tryAutoplay();
     });
 
     socket.on("psyUsers", (list: Array<{ id: string; x: number; y: number; v: number; updatedAt: number }>) => {
@@ -417,7 +428,7 @@
   // -------------------------
   // Shaders
   // -------------------------
-  const vertexShader = /* glsl */`
+  const vertexShader = /* glsl */ `
     varying vec2 vUv;
     void main() {
       vUv = uv;
@@ -425,7 +436,7 @@
     }
   `;
 
-  const fragmentShader = /* glsl */`
+  const fragmentShader = /* glsl */ `
     precision highp float;
     varying vec2 vUv;
 
@@ -588,8 +599,14 @@
     align-items: center;
   }
 
-  .icon { opacity: 0.9; }
-  .pct { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .icon {
+    opacity: 0.9;
+  }
+  .pct {
+    min-width: 44px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 
   .skRange {
     width: 200px;
@@ -605,7 +622,7 @@
     background: linear-gradient(
       90deg,
       rgba(197, 97, 255, 0.95) var(--fill),
-      rgba(255,255,255,0.18) var(--fill)
+      rgba(255, 255, 255, 0.18) var(--fill)
     );
   }
   .skRange::-moz-range-track {
@@ -614,7 +631,7 @@
     background: linear-gradient(
       90deg,
       rgba(197, 97, 255, 0.95) var(--fill),
-      rgba(255,255,255,0.18) var(--fill)
+      rgba(255, 255, 255, 0.18) var(--fill)
     );
   }
 
@@ -623,7 +640,7 @@
     width: 16px;
     height: 16px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.95);
+    background: rgba(255, 255, 255, 0.95);
     border: 2px solid rgba(197, 97, 255, 0.95);
     margin-top: -4px;
   }
@@ -631,7 +648,7 @@
     width: 16px;
     height: 16px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.95);
+    background: rgba(255, 255, 255, 0.95);
     border: 2px solid rgba(197, 97, 255, 0.95);
   }
 
@@ -640,7 +657,7 @@
     left: 16px;
     top: 56px;
     z-index: 1000;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255, 255, 255, 0.85);
     font-size: 12px;
   }
 </style>
@@ -648,7 +665,14 @@
 <div class="container" bind:this={container}></div>
 
 {#if browser}
-  <div class="vol" on:pointerdown|stopPropagation on:pointermove|stopPropagation>
+  <div
+    class="vol"
+    on:pointerdown={(e) => {
+      e.stopPropagation();
+      ensureAudioUnlocked();
+    }}
+    on:pointermove|stopPropagation
+  >
     <span class="icon">🔊</span>
 
     <input
