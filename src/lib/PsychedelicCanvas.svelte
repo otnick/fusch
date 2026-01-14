@@ -32,11 +32,14 @@
   let analyser: AnalyserNode | null = null;
   let freqData: Uint8Array | null = null;
 
-  let audioUnlocked = false; // true after first user gesture
+  // ✅ Audio is OFF until user moves the slider
+  let audioUnlocked = false; // becomes true after slider interaction
   let audioPlaying = false;
 
-  // Volume (0..100)
-  let volumePct = 60;
+  // ✅ Volume (0..100) starts at 0
+  let volumePct = 0;
+
+  // keep audio element volume in sync
   $: if (audioEl) audioEl.volume = Math.min(1, Math.max(0, volumePct / 100));
 
   function resolveUrl(state: AudioState) {
@@ -57,7 +60,7 @@
     audioEl.volume = Math.min(1, Math.max(0, volumePct / 100));
   }
 
-  // ✅ Create AudioContext + analyser ONLY after user gesture
+  // ✅ Create AudioContext + analyser ONLY after user gesture (slider move)
   async function ensureAudioGraph() {
     if (!audioEl) return;
 
@@ -82,16 +85,22 @@
   function syncAudioTime(state: AudioState) {
     if (!audioEl || !state.startedAt) return;
 
-    const target = (Date.now() - state.startedAt) / 1000;
+    const dur = audioEl.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+
+    const targetAbs = (Date.now() - state.startedAt) / 1000;
+    const target = targetAbs % dur;
+
     const cur = audioEl.currentTime || 0;
     const diff = target - cur;
 
-    if (Math.abs(diff) > 0.75) audioEl.currentTime = Math.max(0, target);
-    else audioEl.currentTime = cur + diff * 0.15;
+    // shortest wrap-around diff (handles looping)
+    const wrapDiff = ((diff + dur / 2) % dur) - dur / 2;
+
+    if (Math.abs(wrapDiff) > 0.75) audioEl.currentTime = Math.max(0, target);
+    else audioEl.currentTime = cur + wrapDiff * 0.15;
   }
 
-  // ✅ This is the ONLY function that actually starts audio playback
-  // It assumes: audioUnlocked === true (user gesture happened)
   async function startSyncedAudio(state: AudioState) {
     if (!browser) return;
 
@@ -104,10 +113,22 @@
       const url = resolveUrl(state);
       ensureAudioElement(url);
 
-      // after gesture -> build audio context/analyser
+      // after slider gesture -> build audio context/analyser
       await ensureAudioGraph();
 
+      // try to sync (might be a no-op until metadata loaded)
       syncAudioTime(state);
+
+      // if duration isn't ready yet, sync again once metadata arrives
+      if (!Number.isFinite(audioEl!.duration) || audioEl!.duration <= 0) {
+        audioEl!.addEventListener(
+          "loadedmetadata",
+          () => {
+            if (lastAudioState?.startedAt) syncAudioTime(lastAudioState);
+          },
+          { once: true }
+        );
+      }
 
       await audioEl!.play();
       audioPlaying = true;
@@ -124,34 +145,17 @@
     } catch {}
   }
 
-  // ✅ Called on first pointerdown
-  function ensureAudioUnlocked() {
+  // ✅ Unlock ONLY via slider interaction
+  async function unlockAudioViaSlider() {
     if (audioUnlocked) return;
     audioUnlocked = true;
-    if (lastAudioState) startSyncedAudio(lastAudioState);
+    if (lastAudioState) await startSyncedAudio(lastAudioState);
   }
 
-  // ✅ Autoplay try: we ONLY prepare the element + try play (without AudioContext)
-  // If browser blocks it: no warning; user tap will unlock and start properly.
+  // ✅ NO autoplay anymore (music should NOT start until slider moved)
+  // (kept as a stub to make intent explicit)
   async function tryAutoplay() {
-    if (!lastAudioState?.startedAt) return;
-
-    try {
-      const url = resolveUrl(lastAudioState);
-      ensureAudioElement(url);
-      syncAudioTime(lastAudioState);
-
-      await audioEl!.play(); // may be blocked silently
-      audioPlaying = true;
-
-      // If this succeeds, we can mark unlocked (playback allowed)
-      audioUnlocked = true;
-
-      // We still avoid building analyser here to prevent warnings.
-    } catch {
-      audioPlaying = false;
-      // expected on many browsers
-    }
+    return;
   }
 
   // -------------------------
@@ -168,7 +172,9 @@
   const uniforms = {
     uTime: { value: 0 },
     uRes: { value: new THREE.Vector2(1, 1) },
-    uUsers: { value: Array.from({ length: MAX_USERS }, () => new THREE.Vector4(0.5, 0.5, 0.0, 0.0)) },
+    uUsers: {
+      value: Array.from({ length: MAX_USERS }, () => new THREE.Vector4(0.5, 0.5, 0.0, 0.0))
+    },
     uUserCount: { value: 0 },
 
     uEnergy: { value: 0.0 },
@@ -197,11 +203,6 @@
 
   function onPointerMove(e: PointerEvent) {
     if (!container) return;
-
-    if (e.type === "pointerdown") {
-      container.setPointerCapture?.(e.pointerId);
-      ensureAudioUnlocked();
-    }
 
     const rect = container.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
@@ -300,7 +301,7 @@
 
     updateAudioUniforms();
 
-    // ✅ gentle resync every ~1s
+    // gentle resync every ~1s
     if (audioPlaying && lastAudioState?.startedAt) {
       if (now - lastResync > 1000) {
         syncAudioTime(lastAudioState);
@@ -362,7 +363,8 @@
     socket.on("audio:state", (s: AudioState) => {
       lastAudioState = s;
 
-      // ✅ If already unlocked -> start properly (with AudioContext + analyser + sync)
+      // ✅ do NOT start music automatically anymore
+      // start only after slider interaction (audioUnlocked === true)
       if (audioUnlocked) startSyncedAudio(s);
       else tryAutoplay();
     });
@@ -665,15 +667,8 @@
 <div class="container" bind:this={container}></div>
 
 {#if browser}
-  <div
-    class="vol"
-    on:pointerdown={(e) => {
-      e.stopPropagation();
-      ensureAudioUnlocked();
-    }}
-    on:pointermove|stopPropagation
-  >
-    <span class="icon">🔊</span>
+  <div class="vol" on:pointermove|stopPropagation>
+    <span class="icon">{audioUnlocked ? "🔊" : "🔇"}</span>
 
     <input
       class="skRange"
@@ -684,12 +679,28 @@
       step="1"
       bind:value={volumePct}
       aria-label="Volume"
+      on:input={(e) => {
+        e.stopPropagation();
+
+        // first slider move = user gesture unlock + start
+        if (!audioUnlocked) unlockAudioViaSlider();
+
+        // if user drags back to 0, we can pause (optional)
+        if (audioUnlocked && volumePct <= 0 && audioPlaying) stopAudio();
+        // if user raises from 0 and we have state, resume (optional)
+        if (audioUnlocked && volumePct > 0 && lastAudioState?.startedAt && !audioPlaying) startSyncedAudio(lastAudioState);
+      }}
+      on:pointerdown={(e) => {
+        // counts as gesture too (desktop)
+        e.stopPropagation();
+        if (!audioUnlocked) unlockAudioViaSlider();
+      }}
     />
 
     <span class="pct">{volumePct}%</span>
   </div>
 
   {#if !audioUnlocked}
-    <div class="hint">Tippe / klicke einmal, damit Audio starten darf.</div>
+    <div class="hint">Bewege den Slider, um Musik zu aktivieren.</div>
   {/if}
 {/if}

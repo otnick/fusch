@@ -8,8 +8,8 @@
 <!-- <Canvas /> -->
 
 <!-- Zentrale Überschrift + Countdown -->
-<div class="fixed inset-0 flex items-center justify-center pointer-events-none container">
-  <div>
+<div class="fixed inset-0 flex items-center justify-center pointer-events-none z-50">
+  <div class="pointer-events-none">
     <h1 class="text-8xl font-bold text-center mb-4 text-white">FUSCH</h1>
     <Countdown />
   </div>
@@ -18,11 +18,4 @@
 <PartyButton />
 <PsychedelicCanvas />
 <style>
-  .container {
-    z-index: 1000;
-    width: 100vw;
-    height: 100vh;
-    max-width: none;
-    max-height: none;
-  }
 </style>
