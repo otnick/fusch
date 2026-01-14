@@ -6,7 +6,7 @@
 
 	const artists = [
 		{ name: 'DJ Hauki', desc: 'All-Time Classics', icon: MicIcon },
-		{ name: 'DJ Klaus', desc: 'Psychedelic & Rock', icon: ZapIcon },
+		{ name: 'DJ Claus', desc: 'Psychedelic & Rock', icon: ZapIcon },
 		{ name: 'uumm', desc: 'Drum & Bass', icon: HeadphonesIcon },
 		{ name: 'hns', desc: 'Drum & Bass aber anders', icon: MusicIcon },
 		{ name: 'pipi & kaka', desc: 'Techno', icon: MusicIcon },
