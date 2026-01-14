@@ -2,9 +2,10 @@
   import Canvas from '$lib/Canvas.svelte';
   import Countdown from '$lib/Countdown.svelte';
   import PartyButton from '$lib/PartyButton.svelte';
+  import PsychedelicCanvas from "$lib/PsychedelicCanvas.svelte";
 </script>
 
-<Canvas />
+<!-- <Canvas /> -->
 
 <!-- Zentrale Überschrift + Countdown -->
 <div class="fixed inset-0 flex items-center justify-center pointer-events-none z-10">
@@ -15,3 +16,4 @@
 </div>
 
 <PartyButton />
+<PsychedelicCanvas />
