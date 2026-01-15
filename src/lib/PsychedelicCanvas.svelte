@@ -30,6 +30,11 @@
   let audioUnlocked = false;
   let audioPlaying = false;
 
+  // ✅ prevent double starts (multiple audio:state events etc.)
+  let startingAudio = false;
+  // ✅ dedupe audio:state events
+  let lastAudioKey = "";
+
   // Slider starts at 0
   let volumePct = 0;
   $: if (audioEl) audioEl.volume = Math.min(1, Math.max(0, volumePct / 100));
@@ -84,6 +89,58 @@
     }
   }
 
+  // -------------------------
+  // ✅ SOFT SYNC (playbackRate-based) + rare hard seek
+  // -------------------------
+  function computeWrappedDiff(target: number, cur: number, dur: number) {
+    let diff = target - cur;
+    diff = ((diff + dur / 2) % dur) - dur / 2; // shortest wrap-around diff
+    return diff;
+  }
+
+  function hardAlignOnce(state: AudioState) {
+    if (!audioEl || !state.startedAt) return;
+
+    const dur = audioEl.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+
+    const targetAbs = (Date.now() - state.startedAt) / 1000;
+    const target = targetAbs % dur;
+
+    audioEl.playbackRate = 1.0;
+    audioEl.currentTime = Math.max(0, target);
+  }
+
+  function softSyncAudio(state: AudioState) {
+    if (!audioEl || !state.startedAt) return;
+
+    const dur = audioEl.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+
+    const targetAbs = (Date.now() - state.startedAt) / 1000;
+    const target = targetAbs % dur;
+
+    const cur = audioEl.currentTime || 0;
+    const diff = computeWrappedDiff(target, cur, dur);
+    const abs = Math.abs(diff);
+
+    // If we're very far off: rare hard seek (can click), keep threshold high
+    const HARD_SEEK_SEC = 4.0;
+    if (abs > HARD_SEEK_SEC) {
+      // dbg("softSync: too far -> hard align", { cur, target, diff });
+      hardAlignOnce(state);
+      return;
+    }
+
+    // Gentle drift correction (no clicks)
+    // Clamp the rate tightly so pitch change is tiny
+    const MAX_RATE_DELTA = 0.015; // ±1.5%
+    const K = 0.04; // responsiveness
+    const rate = 1.0 + Math.max(-MAX_RATE_DELTA, Math.min(MAX_RATE_DELTA, diff * K));
+    audioEl.playbackRate = rate;
+  }
+
+  // Keep your old function (still useful for first-start / metadata moment)
   function syncAudioTime(state: AudioState) {
     if (!audioEl || !state.startedAt) return;
 
@@ -112,43 +169,60 @@
       return;
     }
 
+    // Don’t start if we’re muted / slider at 0
+    if (volumePct <= 0) {
+      dbg("volume is 0 -> not playing (by design)");
+      return;
+    }
+
+    // prevent parallel play() calls
+    if (startingAudio) {
+      dbg("startSyncedAudio: already starting -> skip");
+      return;
+    }
+    startingAudio = true;
+
     const url = resolveUrl(state);
     ensureAudioElement(url);
 
     try {
       await ensureAudioGraph();
 
-      // sync after metadata if needed
+      // Reset playbackRate on start
+      if (audioEl) audioEl.playbackRate = 1.0;
+
+      // If metadata missing, wait once, then align once and soft sync
       if (!Number.isFinite(audioEl!.duration) || audioEl!.duration <= 0) {
-        audioEl!.addEventListener(
-          "loadedmetadata",
-          () => {
-            if (lastAudioState?.startedAt) syncAudioTime(lastAudioState);
-          },
-          { once: true }
-        );
-      } else {
-        syncAudioTime(state);
+        await new Promise<void>((resolve) => {
+          const done = () => resolve();
+          audioEl!.addEventListener("loadedmetadata", done, { once: true });
+          setTimeout(done, 3000); // safety
+        });
       }
 
-      // Only play if volume > 0 (slider enables)
-      if (volumePct <= 0) {
-        dbg("volume is 0 -> not playing (by design)");
-        return;
-      }
+      // Initial align once (may click, but only once)
+      // Prefer a stronger align once, then only soft-sync afterwards
+      if (lastAudioState?.startedAt) hardAlignOnce(lastAudioState);
+      else hardAlignOnce(state);
 
       await audioEl!.play();
       audioPlaying = true;
       dbg("play() ok", { currentTime: audioEl!.currentTime, duration: audioEl!.duration });
+
+      // immediately set a soft correction baseline
+      softSyncAudio(state);
     } catch (e) {
       audioPlaying = false;
       dbg("start failed", e);
+    } finally {
+      startingAudio = false;
     }
   }
 
   function stopAudio() {
     audioPlaying = false;
     try {
+      if (audioEl) audioEl.playbackRate = 1.0;
       audioEl?.pause();
     } catch {}
   }
@@ -190,7 +264,9 @@
     uniforms.uRes.value.set(w, h);
   }
 
-  function clamp01(n: number) { return Math.min(1, Math.max(0, n)); }
+  function clamp01(n: number) {
+    return Math.min(1, Math.max(0, n));
+  }
 
   function onPointerMove(e: PointerEvent) {
     if (!container) return;
@@ -215,7 +291,10 @@
     uniforms.uUserCount.value = entries.length;
   }
 
-  let lastSend = 0, lastSentX = 0.5, lastSentY = 0.5;
+  let lastSend = 0,
+    lastSentX = 0.5,
+    lastSentY = 0.5;
+
   function sendPsyInput(v: number, force = false) {
     if (!socket || !myId) return;
     const now = performance.now();
@@ -247,9 +326,14 @@
     const trebleStart = Math.floor(n * 0.75);
     const energyEnd = Math.floor(n * 0.5);
 
-    let bassSum = 0; for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
-    let trebleSum = 0; for (let i = trebleStart; i < n; i++) trebleSum += freqData[i];
-    let energySum = 0; for (let i = 0; i < energyEnd; i++) energySum += freqData[i];
+    let bassSum = 0;
+    for (let i = 0; i < bassEnd; i++) bassSum += freqData[i];
+
+    let trebleSum = 0;
+    for (let i = trebleStart; i < n; i++) trebleSum += freqData[i];
+
+    let energySum = 0;
+    for (let i = 0; i < energyEnd; i++) energySum += freqData[i];
 
     const bass = bassSum / (bassEnd * 255);
     const treble = trebleSum / ((n - trebleStart) * 255);
@@ -265,7 +349,10 @@
     uniforms.uEnergy.value = uniforms.uEnergy.value * 0.92 + energyC * 0.08;
   }
 
-  let last = 0, lastResync = 0;
+  // ✅ soft sync on a short interval (no clicks)
+  let last = 0;
+  let lastSoftSync = 0;
+
   function animate(now = performance.now()) {
     if (!renderer || !scene || !camera) return;
 
@@ -275,9 +362,10 @@
 
     updateAudioUniforms();
 
-    if (audioPlaying && lastAudioState?.startedAt && now - lastResync > 10000) {
-      syncAudioTime(lastAudioState);
-      lastResync = now;
+    // ✅ Soft-sync every ~2s while playing
+    if (audioPlaying && lastAudioState?.startedAt && now - lastSoftSync > 2000) {
+      softSyncAudio(lastAudioState);
+      lastSoftSync = now;
     }
 
     const SPEED = 0.20 + 0.05 * uniforms.uEnergy.value;
@@ -327,9 +415,15 @@
     });
 
     socket.on("audio:state", (s: AudioState) => {
+      // dedupe
+      const key = `${s.sessionId ?? ""}|${s.startedAt ?? ""}|${s.url ?? ""}`;
+      if (key === lastAudioKey) return;
+      lastAudioKey = key;
+
       dbg("audio:state", s);
       lastAudioState = s;
 
+      // If already unlocked + volume > 0 => (re)start
       if (audioUnlocked && volumePct > 0) startSyncedAudio(s, "server update");
       if (audioUnlocked && !s.startedAt) dbg("⚠️ startedAt null from server (no session running?)");
     });
@@ -359,7 +453,9 @@
     socket = null;
 
     stopAudio();
-    try { audioCtx?.close(); } catch {}
+    try {
+      audioCtx?.close();
+    } catch {}
     audioCtx = null;
     analyser = null;
     freqData = null;
