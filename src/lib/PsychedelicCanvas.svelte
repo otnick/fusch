@@ -275,7 +275,7 @@
 
     updateAudioUniforms();
 
-    if (audioPlaying && lastAudioState?.startedAt && now - lastResync > 1000) {
+    if (audioPlaying && lastAudioState?.startedAt && now - lastResync > 10000) {
       syncAudioTime(lastAudioState);
       lastResync = now;
     }
