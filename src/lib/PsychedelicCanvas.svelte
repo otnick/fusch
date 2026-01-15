@@ -259,7 +259,12 @@
     const vv = window.visualViewport;
     const w = Math.max(1, Math.floor(vv?.width ?? window.innerWidth));
     const h = Math.max(1, Math.floor(vv?.height ?? window.innerHeight));
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const isMobile =
+      typeof navigator !== "undefined" &&
+      ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+
+    const dprCap = isMobile ? 1.5 : 2; // 🔥 tweak: 1.0–1.3 je nach feeling
+    renderer.setPixelRatio(Math.min(devicePixelRatio, dprCap));
     renderer.setSize(w, h, true);
     uniforms.uRes.value.set(w, h);
   }
@@ -268,12 +273,16 @@
     return Math.min(1, Math.max(0, n));
   }
 
+  let pendingX = 0.5;
+  let pendingY = 0.5;
+  let hasPendingPointer = false;
+
   function onPointerMove(e: PointerEvent) {
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = 1 - (e.clientY - rect.top) / rect.height;
-    localMouse.set(clamp01(x), clamp01(y));
+    pendingX = clamp01((e.clientX - rect.left) / rect.width);
+    pendingY = clamp01(1 - (e.clientY - rect.top) / rect.height);
+    hasPendingPointer = true;
   }
 
   function updateUsersUniform() {
@@ -376,6 +385,11 @@
     const v = Math.min(2, Math.max(0, velVec.length() * 12));
 
     if (myId) users.set(myId, { x: localMouse.x, y: localMouse.y, v, updatedAt: Date.now() });
+
+    if (hasPendingPointer) {
+      localMouse.set(pendingX, pendingY);
+      hasPendingPointer = false;
+    }
 
     sendPsyInput(v);
     updateUsersUniform();
@@ -506,7 +520,7 @@
     float fbm(vec2 p){
       float v=0., a=0.5;
       mat2 m=mat2(1.6,-1.2,1.2,1.6);
-      for(int i=0;i<5;i++){ v+=a*noise(p); p=m*p; a*=0.55; }
+      for(int i=0;i<4;i++){ v+=a*noise(p); p=m*p; a*=0.55; }
       return v;
     }
     vec3 hsv2rgb(vec3 c){
