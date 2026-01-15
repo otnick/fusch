@@ -18,5 +18,6 @@
 <PartyButton />
 
 <PsychedelicCanvas />
+
 <style>
 </style>

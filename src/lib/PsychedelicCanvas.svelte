@@ -594,14 +594,16 @@
   .container :global(canvas) { display:block; width:100%; height:100%; }
 
   .vol {
-    position: fixed; left: 16px; top: 16px; z-index: 1000;
-    padding: 10px 12px; border-radius: 12px;
+    position: fixed; right: 16px; top: 64px; z-index: 1000;
+    padding: 10px 12px; border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.18);
-    background: rgba(0,0,0,0.55); color: white; backdrop-filter: blur(8px);
+    background: rgba(250, 182, 34, 0.55); color: white; backdrop-filter: blur(8px);
     display: flex; gap: 10px; align-items: center;
+    max-width: 200px;
+    max-height: 40px;
   }
-  .pct { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
-  .skRange { width: 200px; height: 18px; appearance: none; background: transparent; cursor: pointer; }
+  .pct { min-width: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+  .skRange { width: 100px; height: 18px; appearance: none; background: transparent; cursor: pointer; }
   .skRange::-webkit-slider-runnable-track {
     height: 8px; border-radius: 999px;
     background: linear-gradient(90deg, rgba(197,97,255,0.95) var(--fill), rgba(255,255,255,0.18) var(--fill));
@@ -619,7 +621,11 @@
     width:16px; height:16px; border-radius:999px;
     background: rgba(255,255,255,0.95); border: 2px solid rgba(197,97,255,0.95);
   }
-  .hint { position: fixed; left: 16px; top: 56px; z-index: 1000; color: rgba(255,255,255,0.85); font-size: 12px; }
+  .hint { position: fixed; right: 16px; top: 102px; z-index: 1000; color: rgba(255,255,255,0.85); font-size: 12px; }
+  .credits {
+    position: fixed; top: 22px; left: 12px;
+    color: rgba(255,255,255,0.65); font-size: 13px; z-index: 1000;
+  }
 </style>
 
 <div class="container" bind:this={container}></div>
@@ -655,8 +661,9 @@
 
     <span class="pct">{volumePct}%</span>
   </div>
+  <div class="credits">Set: pipi & kaka Fusch25</div>
 
   {#if !audioUnlocked}
-    <div class="hint">Bewege den Slider, um Musik zu aktivieren.</div>
+    <div class="hint ms-2 mt-1">Bewege den Slider, um Musik zu aktivieren.</div>
   {/if}
 {/if}
