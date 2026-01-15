@@ -43,6 +43,7 @@
         if (state) startConfetti();
         else stopConfetti();
       });
+      toggleParty();
     });
   
     function toggleParty() {
