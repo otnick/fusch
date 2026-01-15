@@ -16,6 +16,11 @@
 </div>
 
 <PartyButton />
-<PsychedelicCanvas />
+<img
+  src="assets/Baustelle.jpg"
+  alt="Baustelle"
+  class="fixed inset-0 w-full h-full z-50 pointer-events-none select-none opacity-75"
+/>
+<!-- <PsychedelicCanvas /> -->
 <style>
 </style>
