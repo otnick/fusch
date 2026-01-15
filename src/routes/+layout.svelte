@@ -20,7 +20,7 @@
 </div>
 
 <!-- Bottom Navigation -->
-<div
+<!-- <div
   class="fixed bottom-0 left-1/2 transform -translate-x-1/2 z-50
          bg-success-200 shadow-lg rounded-t-xl
          w-full max-w-2xs p-3
@@ -38,4 +38,4 @@
       <span class="sr-only">{label}</span>
     </Navigation.Tile>
   {/each}
-</div>
+</div> -->
