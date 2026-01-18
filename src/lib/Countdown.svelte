@@ -28,7 +28,7 @@
     });
   </script>
   
-  <div class="text-4xl font-bold flex gap-4">
+  <div class="text-4xl font-bold flex gap-4 text-shadow-white">
     {#if $timeLeft}
       <span>{$timeLeft.days}d</span>
       <span>{$timeLeft.hours}h</span>
