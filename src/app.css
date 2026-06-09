@@ -7,3 +7,47 @@
 @import '@skeletonlabs/skeleton/themes/cerberus';
 
 @source '../node_modules/@skeletonlabs/skeleton-svelte/dist';
+
+@import "leaflet/dist/leaflet.css";
+
+html, body { height: 100%; }
+
+.leaflet-container img,
+.leaflet-pane img,
+.leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+/* ✅ Give the map a non-white base so “loading/black flash” looks intentional */
+.leaflet-container {
+  background: radial-gradient(1200px 600px at 30% 20%, rgba(170, 90, 255, 0.18), transparent 60%),
+              radial-gradient(1000px 500px at 70% 70%, rgba(60, 255, 210, 0.12), transparent 55%),
+              #070811;
+}
+
+/* ✅ Make Leaflet controls above everything */
+.leaflet-control-container {
+  z-index: 2000;
+}
+
+/* ===== Psychedelic buttons / readable text ===== */
+.psy-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: linear-gradient(135deg, rgba(180,110,255,0.35), rgba(60,255,210,0.18));
+  color: rgba(255,255,255,0.94);
+  text-shadow: 0 1px 10px rgba(0,0,0,0.45);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  backdrop-filter: blur(10px);
+}
+
+.psy-btn--active {
+  background: linear-gradient(135deg, rgba(180,110,255,0.85), rgba(60,255,210,0.35));
+  border-color: rgba(255,255,255,0.22);
+}
+
+.psy-btn:disabled {
+  opacity: 0.6;
+  filter: grayscale(0.2);
+}
