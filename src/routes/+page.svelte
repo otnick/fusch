@@ -16,6 +16,11 @@
   </div>
 </div>
 
+<a href="https://wm.fusch.fun" target="_blank" rel="noopener noreferrer"
+  class="fixed bottom-4 right-4 z-50 text-white/60 hover:text-white text-sm underline underline-offset-4 transition-colors">
+  wm.fusch.fun
+</a>
+
 <PartyButton />
 
 <PsychedelicCanvas />
