@@ -109,12 +109,10 @@
 				<stop offset="0.5" stop-color="#ec4899" />
 				<stop offset="1" stop-color="#a855f7" />
 			</linearGradient>
-			<filter id="dripglow" x="-40%" y="-40%" width="180%" height="180%">
-				<feGaussianBlur stdDeviation="14" result="big" />
-				<feGaussianBlur stdDeviation="5" result="small" />
+			<filter id="dripglow" x="-30%" y="-30%" width="160%" height="160%">
+				<feGaussianBlur stdDeviation="10" result="big" />
 				<feMerge>
 					<feMergeNode in="big" />
-					<feMergeNode in="small" />
 					<feMergeNode in="SourceGraphic" />
 				</feMerge>
 			</filter>
@@ -352,6 +350,20 @@
 		.starfield::before,
 		.starfield::after {
 			animation: none;
+		}
+	}
+
+	/* Touch-Geräte: teure Dauer-Repaints raus -> flüssigeres Scrollen.
+	   Ohne hue-rotate kann das große Drip-Layer gecacht werden und wird
+	   beim Parallax nur noch verschoben statt jeden Frame neu gerastert. */
+	@media (hover: none) and (pointer: coarse) {
+		.drips {
+			animation: none; /* kein hue-rotate */
+			mix-blend-mode: normal; /* kein per-Frame-Blend beim Scrollen */
+		}
+		.starfield::before,
+		.starfield::after {
+			animation: none; /* kein Twinkle */
 		}
 	}
 </style>
