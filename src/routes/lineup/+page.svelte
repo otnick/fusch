@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PsychedelicCanvas from '$lib/PsychedelicCanvas.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import { onMount } from 'svelte';
 
 	type Slot = { time: string; act: string; break?: boolean };
 	type Stage = { name: string; slots: Slot[] };
@@ -24,45 +25,86 @@
 			]
 		}
 	];
+
+	// Parallax via GSAP ScrollTrigger (sauber ans Scrollen gekoppelt, gescrubt)
+	onMount(() => {
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+		let ctx: { revert: () => void } | undefined;
+		let cancelled = false;
+
+		Promise.all([import('gsap'), import('gsap/ScrollTrigger')]).then(
+			([{ gsap }, { ScrollTrigger }]) => {
+				if (cancelled) return;
+				gsap.registerPlugin(ScrollTrigger);
+
+				ctx = gsap.context(() => {
+					// Ebene bewegt sich über den gesamten Scroll-Weg um factor × Scrollhöhe
+					const layer = (sel: string, factor: number) =>
+						gsap.to(sel, {
+							y: () => -ScrollTrigger.maxScroll(window) * factor,
+							ease: 'none',
+							scrollTrigger: {
+								start: 0,
+								end: () => ScrollTrigger.maxScroll(window),
+								scrub: 0.6,
+								invalidateOnRefresh: true
+							}
+						});
+
+					layer('.js-bg', 0.12); // Sterne: am langsamsten
+					layer('.js-drips', 0.4); // Drips: mittlere Geschwindigkeit
+				});
+			}
+		);
+
+		return () => {
+			cancelled = true;
+			ctx?.revert();
+		};
+	});
 </script>
+
 
 <!-- Synced music (same engine as start page); visuals hidden behind the starfield -->
 <PsychedelicCanvas />
 
-<!-- Black sky with stars -->
-<div class="starfield pointer-events-none fixed inset-0 z-0"></div>
+<!-- Sternenhimmel: langsamste Parallax-Ebene (vergrößert, damit beim Verschieben keine Kante sichtbar wird) -->
+<div
+	class="starfield parallax-layer js-bg pointer-events-none fixed left-0 right-0 -top-[25vh] z-0 h-[160vh]"
+></div>
 
-<div class="relative z-10 min-h-screen text-surface-50">
-	<!-- Deko: eigene Rainbow-Drips (SVG), laufen über die volle Höhe -->
-	<svg
-		class="drips pointer-events-none absolute inset-0 z-0 h-full w-full mix-blend-screen"
-		viewBox="0 0 800 1300"
-		preserveAspectRatio="xMidYMin slice"
-		aria-hidden="true"
-	>
+<!-- Deko: eigene Rainbow-Drips (SVG), mittlere Parallax-Geschwindigkeit -->
+<svg
+	class="drips parallax-layer js-drips pointer-events-none fixed left-0 top-0 z-0 w-screen mix-blend-screen"
+	style="height: 325vw"
+	viewBox="0 0 800 2600"
+	preserveAspectRatio="xMidYMin meet"
+	aria-hidden="true"
+>
 		<defs>
 			<!-- jeder Drip eine eigene Farbfamilie -->
-			<linearGradient id="d1" x1="0" y1="0" x2="0" y2="1300" gradientUnits="userSpaceOnUse">
+			<linearGradient id="d1" x1="0" y1="0" x2="0" y2="2600" gradientUnits="userSpaceOnUse">
 				<stop offset="0" stop-color="#a855f7" />
 				<stop offset="0.5" stop-color="#d946ef" />
 				<stop offset="1" stop-color="#f472b6" />
 			</linearGradient>
-			<linearGradient id="d2" x1="0" y1="0" x2="0" y2="1300" gradientUnits="userSpaceOnUse">
+			<linearGradient id="d2" x1="0" y1="0" x2="0" y2="2600" gradientUnits="userSpaceOnUse">
 				<stop offset="0" stop-color="#22d3ee" />
 				<stop offset="0.5" stop-color="#3b82f6" />
 				<stop offset="1" stop-color="#6366f1" />
 			</linearGradient>
-			<linearGradient id="d3" x1="0" y1="0" x2="0" y2="1300" gradientUnits="userSpaceOnUse">
+			<linearGradient id="d3" x1="0" y1="0" x2="0" y2="2600" gradientUnits="userSpaceOnUse">
 				<stop offset="0" stop-color="#34d399" />
 				<stop offset="0.5" stop-color="#84cc16" />
 				<stop offset="1" stop-color="#fde047" />
 			</linearGradient>
-			<linearGradient id="d4" x1="0" y1="0" x2="0" y2="1300" gradientUnits="userSpaceOnUse">
+			<linearGradient id="d4" x1="0" y1="0" x2="0" y2="2600" gradientUnits="userSpaceOnUse">
 				<stop offset="0" stop-color="#fbbf24" />
 				<stop offset="0.5" stop-color="#f97316" />
 				<stop offset="1" stop-color="#ef4444" />
 			</linearGradient>
-			<linearGradient id="d5" x1="0" y1="0" x2="0" y2="1300" gradientUnits="userSpaceOnUse">
+			<linearGradient id="d5" x1="0" y1="0" x2="0" y2="2600" gradientUnits="userSpaceOnUse">
 				<stop offset="0" stop-color="#f472b6" />
 				<stop offset="0.5" stop-color="#ec4899" />
 				<stop offset="1" stop-color="#a855f7" />
@@ -80,23 +122,25 @@
 
 		<g fill="none" stroke-linecap="round" filter="url(#dripglow)">
 			<!-- linker großer Drip -->
-			<path d="M64,-30 C48,180 150,300 100,520 C60,700 150,880 104,1060 C76,1180 92,1222 86,1256" stroke="url(#d1)" stroke-width="30" />
+			<path d="M64,-30 C48,240 150,380 100,640 C60,900 150,1140 104,1400 C72,1640 150,1880 100,2120 C74,2320 92,2420 86,2470" stroke="url(#d1)" stroke-width="30" />
 			<!-- rechter Cluster -->
-			<path d="M560,-30 C548,180 620,320 585,520 C560,680 592,760 578,822" stroke="url(#d2)" stroke-width="18" />
-			<path d="M624,-30 C612,200 690,360 645,600 C610,820 700,1000 650,1180 C632,1236 640,1250 640,1258" stroke="url(#d3)" stroke-width="24" />
-			<path d="M694,-30 C694,180 740,340 706,560 C680,740 722,900 700,1060 C690,1130 694,1146 694,1150" stroke="url(#d4)" stroke-width="18" />
-			<path d="M748,-30 C756,200 792,380 754,600 C724,800 782,1000 742,1180 C734,1232 740,1250 742,1256" stroke="url(#d5)" stroke-width="22" />
+			<path d="M560,-30 C548,240 620,400 585,660 C560,900 600,1120 585,1360 C574,1460 562,1500 566,1520" stroke="url(#d2)" stroke-width="18" />
+			<path d="M624,-30 C612,260 690,440 645,740 C610,1000 700,1240 650,1500 C618,1760 700,2000 650,2240 C634,2400 640,2460 640,2478" stroke="url(#d3)" stroke-width="24" />
+			<path d="M694,-30 C694,260 740,440 706,720 C680,980 722,1200 700,1460 C684,1740 722,1980 706,2140" stroke="url(#d4)" stroke-width="18" />
+			<path d="M748,-30 C756,260 792,460 754,740 C724,1000 782,1240 742,1500 C712,1760 782,2000 742,2240 C726,2400 740,2460 742,2478" stroke="url(#d5)" stroke-width="22" />
 		</g>
 		<g filter="url(#dripglow)">
-			<!-- Tropfen-Enden, farblich passend zum jeweiligen Drip -->
-			<circle cx="86" cy="1256" r="30" fill="url(#d1)" />
-			<circle cx="578" cy="822" r="15" fill="url(#d2)" />
-			<circle cx="640" cy="1258" r="20" fill="url(#d3)" />
-			<circle cx="694" cy="1150" r="15" fill="url(#d4)" />
-			<circle cx="742" cy="1256" r="18" fill="url(#d5)" />
+			<!-- Tropfen-Enden am neuen (unteren) Ende, farblich passend -->
+			<circle cx="86" cy="2470" r="34" fill="url(#d1)" />
+			<circle cx="566" cy="1520" r="16" fill="url(#d2)" />
+			<circle cx="640" cy="2478" r="22" fill="url(#d3)" />
+			<circle cx="706" cy="2140" r="16" fill="url(#d4)" />
+			<circle cx="742" cy="2478" r="18" fill="url(#d5)" />
 		</g>
 	</svg>
 
+<!-- Inhalt: scrollt normal (schnellste Ebene) -->
+<div class="relative z-10 min-h-screen text-surface-50">
 	<div class="relative z-10 mx-auto max-w-2xl px-4 py-12 md:py-16">
 		<!-- Title -->
 		<div class="mb-12 text-center">
@@ -148,11 +192,16 @@
 		Startseite
 	</a>
 
-	<!-- whitespace zum scrollen -->
-	<div class="h-32"></div>
+	<!-- whitespace zum scrollen (gibt der Parallax Raum) -->
+	<div class="h-[60vh]"></div>
 </div>
 
 <style>
+	/* Parallax-Ebenen GPU-beschleunigt halten */
+	.parallax-layer {
+		will-change: transform;
+	}
+
 	/* Farbwechsel + Puls im Glow der Drips */
 	.drips {
 		opacity: 0.6;
