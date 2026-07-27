@@ -13,7 +13,7 @@
 				{ time: '21:00 – 22:00', act: 'luca' },
 				{ time: '22:00 – 23:00', act: 'uumm' },
 				{ time: '23:00 – 00:00', act: 'Hns' },
-				{ time: '01:30 – 02:30', act: 'LEMILIA' }
+				{ time: '00:30 – 01:30', act: 'LEMILIA' }
 			]
 		},
 		{
