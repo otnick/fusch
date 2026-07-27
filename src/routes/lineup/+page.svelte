@@ -8,7 +8,7 @@
 		{
 			name: 'Waterstage',
 			slots: [
-				{ time: '20:00 – 22:00', act: 'DJ Hauki' },
+				{ time: '20:00 – 21:00', act: 'DJ Hauki' },
 				{ time: '21:00 – 22:00', act: 'luca' },
 				{ time: '22:00 – 23:00', act: 'uumm' },
 				{ time: '23:00 – 00:00', act: 'Hns' },
