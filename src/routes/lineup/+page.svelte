@@ -1,5 +1,6 @@
 <script lang="ts">
 	import PsychedelicCanvas from '$lib/PsychedelicCanvas.svelte';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 
 	type Slot = { time: string; act: string; break?: boolean };
 	type Stage = { name: string; slots: Slot[] };
@@ -137,8 +138,13 @@
 		</div>
 	</div>
 
-	<a href="https://fusch.fun/" rel="noopener noreferrer"
-		class="fixed bottom-4 right-4 z-50 text-white/60 hover:text-white text-sm underline underline-offset-4 transition-colors">
+	<!-- Navigation: zurück zur Startseite (interne SvelteKit-Route) -->
+	<a
+		href="/"
+		aria-label="Zur Startseite"
+		class="fixed left-4 z-50 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white/90 shadow-lg backdrop-blur transition hover:bg-black/60 hover:text-white active:scale-95 bottom-[calc(1rem+env(safe-area-inset-bottom))]"
+	>
+		<ArrowLeft size={16} />
 		Startseite
 	</a>
 
